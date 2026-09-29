@@ -82,7 +82,8 @@ def process_match(ctx: Context, m: Match) -> Path:
         if game_id in client.decks:
             d = deck_from_client_log(client.decks[game_id][1], db)
             sizes[me] = d.size
-            decks_txt[me] = f"{deck.name if deck and score > 0.9 else 'unnamed'} ({d.size} cards, exact list from MTGO client log)"
+            named, fit = guess_deck(d.main, ctx.decks)          # which saved deck is this exact list?
+            decks_txt[me] = f"{named.name if named and fit >= 0.9 else 'unnamed'} ({d.size} cards, exact list from MTGO client log)"
         elif deck is not None and score > 0:
             sizes[me] = deck.size
             decks_txt[me] = f"{deck.name} ({deck.size} cards) — guessed: {score:.0%} of the cards you played are in it"

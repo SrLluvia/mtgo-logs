@@ -37,6 +37,25 @@ Options: `--interval 30` (seconds between checks), `--idle 10` (minutes).
 To start it with Windows, put a shortcut in the Startup folder (`Win+R` → `shell:startup`) whose
 target is `pythonw.exe "<path>\watch_mtgo.pyw"`.
 
+## Web viewer
+
+```
+py -m mtgo_replay --serve         # or double-click viewer.bat
+```
+
+Opens `http://127.0.0.1:8765/` in your browser with every generated match:
+
+* the board after each action (opponent on top, you at the bottom): creatures/other permanents and
+  lands (grouped), counters, P/T, attackers, known hand, graveyard / exile / known-library piles
+  (click to see them all) and the stack; cards that just arrived in a zone are highlighted,
+  estimates are outlined with `⚠`,
+* card images from Scryfall (resolved once and cached in `data/scryfall.json`; hover a card for a
+  large preview and its notes; without internet cards are shown as text),
+* navigation: `←`/`→` previous/next action, `↑`/`↓` previous/next turn, `Home`/`End`, a timeline with
+  turn marks, and a clickable log. The URL keeps the current position, so it can be bookmarked.
+
+Options: `--port 8765`, `--no-browser`.
+
 ## Output
 
 `output/<date>_vs_<opponent>/gameN.txt` and `gameN.json` (one file per game of the match).
@@ -95,6 +114,8 @@ mtgo_replay/
   pipeline.py   process one match into per-game files
   watch.py      automatic mode (--watch)
   render.py     write the .txt and .json files
+  server.py     local web server for the viewer (--serve)
+  viewer/       the web viewer (plain HTML/CSS/JS, no build step)
 ```
 
 ## License

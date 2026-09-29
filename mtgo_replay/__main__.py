@@ -1,4 +1,4 @@
-"""Command line entry point:  py -m mtgo_replay [--last N] [--watch]"""
+"""Command line entry point:  py -m mtgo_replay [--last N] [--watch] [--serve]"""
 from __future__ import annotations
 
 import argparse
@@ -25,11 +25,19 @@ def main(argv=None):
     ap.add_argument("--interval", type=float, default=30, help="seconds between checks in --watch mode")
     ap.add_argument("--idle", type=float, default=10,
                     help="minutes without changes after which an unfinished match is processed anyway")
+    ap.add_argument("--serve", action="store_true", help="open the web viewer for the generated reviews")
+    ap.add_argument("--port", type=int, default=8765, help="port for --serve (default 8765)")
+    ap.add_argument("--no-browser", action="store_true", help="with --serve: don't open the browser")
     args = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
         pass
+
+    if args.serve:
+        from .server import serve
+        serve(args.out, args.data, args.port, not args.no_browser)
+        return
 
     if args.watch:
         from .watch import run
