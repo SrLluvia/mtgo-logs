@@ -69,7 +69,7 @@ def _visible_hands(snap, names) -> set[str]:
 _LEAVE_HAND = ("cast", "play_land", "discard", "cycle", "ninjutsu", "suspend", "exile_cost")
 
 
-def _carry_forward(state: dict, last: dict, hand: list[str], me: str | None):
+def _carry_forward(state: dict, last: dict):
     """Improve a non-exact step with what the last exact snapshot revealed."""
     objs = state["objects"]
     # 1. unknown (fetched) cards the snapshot identified
@@ -105,7 +105,6 @@ def _hands_between(log: list[tuple], a: int, b: int | None, start: list[str], en
     stop = b if b is not None else last_step + 1
     events = [e for e in log if a < e[0] <= (b if b is not None else last_step)]
     present = Counter(start)
-    left_at: list[tuple[str, int]] = []           # cards from `start` or known entries, and when they left
     timeline: list[tuple[int, str, str]] = []     # (step, "+"/"-", name) for known cards
     slots: list[int] = []
     drawn: list[tuple[str, int]] = []             # (name, deadline): unknown draws identified later
@@ -159,7 +158,7 @@ def _hands_between(log: list[tuple], a: int, b: int | None, start: list[str], en
     return out
 
 
-def apply_snapshots(steps, snaps, db: CardDB, date=None, me: str | None = None,
+def apply_snapshots(steps, snaps, db: CardDB, me: str | None = None,
                     hand_log: list[tuple] | None = None) -> int:
     if not steps or not snaps:
         return 0
@@ -209,7 +208,7 @@ def apply_snapshots(steps, snaps, db: CardDB, date=None, me: str | None = None,
             exact_hands[i] = [o["name"] for o in after.values() if o["zone"] == "hand" and o["owner"] == me]
             continue
         if last is not None:
-            _carry_forward(st.state, last, [], me)
+            _carry_forward(st.state, last)
         if st.event.kind in ("begin_hand", "mull_bottom", "mulligan") and st.event.actor in offsets:
             # a (re)dealt hand sets absolute counts: an earlier correction no longer applies
             offsets[st.event.actor] = {**offsets[st.event.actor], "hand": 0, "library": 0}

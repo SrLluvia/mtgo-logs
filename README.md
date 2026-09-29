@@ -146,6 +146,20 @@ states (0.5 cards off on average). Life is the hardest part (fetched shocklands 
 named, exact timing of combat damage): exact in ~34 % of the states, hence the `≈` mark.
 With `mtgo.log` snapshots the values become exact.
 
+## Development
+
+```
+py -m unittest discover -s tests
+```
+
+The tests use synthetic logs and a tiny card database (no MTGO or personal data needed) and run on
+every pull request (GitHub Actions, Windows, Python 3.10 and 3.14).
+
+The engine is split by responsibility: `engine.py` (event handlers) combines `identity.py`
+(object identity and zone changes), `stack.py` (when things resolve), `effects.py` (oracle effects,
+P/T, attachments), `combat.py`, `payments.py` (mana and tapped lands) and `hands.py` (the player's
+hand), over the data classes in `model.py`.
+
 ## Building the installer
 
 ```
@@ -164,7 +178,9 @@ mtgo_replay/
   gamelog.py    read the binary .dat files and split a match into games
   events.py     turn each log line into a structured event
   carddb.py     MTGO's offline card database
-  engine.py     game-state reconstruction engine
+  engine.py     game-state reconstruction engine (event handlers)
+  model.py      its data classes; identity.py, stack.py, effects.py, combat.py,
+                payments.py and hands.py hold the rest of the engine
   clientlog.py  archive/read mtgo.log (exact snapshots and decklists)
   snapshots.py  merge exact snapshots into the reconstruction
   decks.py      saved decks and guessing the deck used

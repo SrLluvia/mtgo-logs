@@ -60,6 +60,8 @@ def _read_string(buf: bytes, i: int) -> tuple[str, int]:
         shift += 7
         if b < 0x80:
             break
+    if i + length > len(buf):
+        raise IndexError("string runs past the end of the file")      # record still being written
     return buf[i:i + length].decode("utf-8", "replace"), i + length
 
 
@@ -71,11 +73,14 @@ def read_records(path: Path) -> tuple[str, list[Record]]:
     _, i = _read_string(buf, i)
     records = []
     while i + 8 <= len(buf):
-        (ticks,) = struct.unpack_from("<q", buf, i)
-        i += 8
-        _sender, i = _read_string(buf, i)
-        text, i = _read_string(buf, i)
-        time = _EPOCH + dt.timedelta(microseconds=(ticks & _TICKS_MASK) // 10)
+        try:
+            (ticks,) = struct.unpack_from("<q", buf, i)
+            i += 8
+            _sender, i = _read_string(buf, i)
+            text, i = _read_string(buf, i)
+            time = _EPOCH + dt.timedelta(microseconds=(ticks & _TICKS_MASK) // 10)
+        except (IndexError, OverflowError, struct.error):
+            break                    # MTGO is still writing this record (match in progress): keep the rest
         records.append(Record(time, text))
     return match_id, records
 

@@ -29,8 +29,13 @@ def detect_me(files) -> str | None:
     return seen.most_common(1)[0][0] if seen else None
 
 
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
 def safe(name: str) -> str:
-    return re.sub(r'[<>:"/\\|?*]+', "_", name)
+    """A player name usable as part of a folder name on Windows."""
+    name = re.sub(r"[^\w.-]+", "_", name).strip("._ ")[:60] or "unknown"
+    return f"_{name}" if name.upper() in _RESERVED else name
 
 
 @dataclass
@@ -92,7 +97,7 @@ def process_match(ctx: Context, m: Match) -> Path:
         source = "reconstructed from the game log (see legend)"
         snaps = client.snapshots.get(game_id) if game_id else None
         if snaps:
-            n = apply_snapshots(steps, snaps, db, m.start.date(), me, engine.hand_log.get(me, []))
+            n = apply_snapshots(steps, snaps, db, me, engine.hand_log.get(me, []))
             source = f"game log + {n} exact MTGO snapshots (life, hands, zones)"
         on_play = next((e.actor for e in events if e.kind == "play_first"), None)
         header = {

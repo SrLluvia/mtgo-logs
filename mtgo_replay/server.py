@@ -3,10 +3,21 @@
 Serves the viewer (mtgo_replay/viewer/), the generated reviews in output/, and
 card image URLs resolved through Scryfall (cached in data/scryfall.json so every
 card is looked up only once).
+
+Security: the server only listens on 127.0.0.1, but any web page the user
+visits can make their browser send requests to it.  So it
+  * only answers requests addressed to 127.0.0.1/localhost on its own port
+    (blocks DNS-rebinding pages from reading reviews and notes),
+  * rejects writes from other origins and requires a JSON content type, which
+    a cross-site page can only send after a CORS preflight this server never
+    grants (blocks CSRF against the notes),
+  * caps request bodies and validates every path/parameter,
+  * sends a strict Content-Security-Policy and anti-framing headers.
 """
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import urllib.error
@@ -19,6 +30,18 @@ from pathlib import Path
 
 VIEWER = Path(__file__).resolve().parent / "viewer"
 _TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}
+MAX_BODY = 1_000_000                      # bytes; notes and card-name lists are far smaller
+_DIR_NAME = re.compile(r"^[\w-][\w.-]{0,120}$")   # a match folder name: no separators, no leading dot
+_MATCH_ID = re.compile(r"^[0-9A-Za-z-]{1,64}$")
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; "
+                               "img-src 'self' https://cards.scryfall.io; object-src 'none'; base-uri 'none'; "
+                               "form-action 'none'; frame-ancestors 'none'",
+}
 
 
 class Library:
@@ -57,11 +80,14 @@ class Library:
         return sorted(out, key=lambda m: m["date"], reverse=True)
 
     def game_file(self, dir_name: str, n: int) -> Path | None:
-        d = self.out / dir_name
-        if d.parent != self.out or not (d / ".match").exists():   # no path tricks
+        if not _DIR_NAME.match(dir_name) or ".." in dir_name or not 1 <= n <= 9:
+            return None
+        root = self.out.resolve()
+        d = (root / dir_name).resolve()
+        if d.parent != root or not (d / ".match").is_file():       # must be a match folder inside output/
             return None
         f = d / f"game{n}.json"
-        return f if f.exists() else None
+        return f if f.is_file() else None
 
 
 class Scryfall:
@@ -144,7 +170,8 @@ class Notes:
 
     def put(self, match_id: str, entry: dict) -> dict:
         clean = {"opp_deck": str(entry.get("opp_deck", ""))[:80].strip(), "notes": []}
-        for n in entry.get("notes", [])[:500]:
+        raw_notes = entry.get("notes", [])
+        for n in (raw_notes if isinstance(raw_notes, list) else [])[:500]:
             try:
                 clean["notes"].append({"id": str(n["id"])[:40], "game": int(n["game"]), "step": int(n["step"]),
                                        "turn": int(n.get("turn") or 0), "text": str(n.get("text", ""))[:1000],
@@ -173,13 +200,37 @@ def make_handler(lib: Library, scry: Scryfall, notes: Notes):
             self.send_header("Content-Type", ctype + "; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-cache")
+            for k, v in _SECURITY_HEADERS.items():
+                self.send_header(k, v)
             self.end_headers()
             self.wfile.write(body)
+
+        def _own_origins(self) -> set[str]:
+            port = self.server.server_address[1]
+            return {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+        def _host_ok(self) -> bool:
+            """Reject DNS rebinding: the request must be addressed to us by IP or localhost."""
+            return self.headers.get("Host", "") in self._own_origins()
+
+        def _origin_ok(self) -> bool:
+            """Browsers send Origin on every POST; only our own pages may write."""
+            origin = self.headers.get("Origin")
+            return origin is None or origin in {f"http://{h}" for h in self._own_origins()}
+
+        def _read_json(self):
+            """The request body as JSON, or raise ValueError (bad length, too big, not JSON)."""
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= length <= MAX_BODY:
+                raise ValueError("body too large")
+            return json.loads(self.rfile.read(length) or b"null")
 
         def _json(self, obj, status=HTTPStatus.OK):
             self._send(json.dumps(obj, ensure_ascii=False).encode(), "application/json", status)
 
         def do_GET(self):
+            if not self._host_ok():
+                return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
             url = urllib.parse.urlparse(self.path)
             q = urllib.parse.parse_qs(url.query)
             if url.path == "/api/ping":
@@ -201,24 +252,24 @@ def make_handler(lib: Library, scry: Scryfall, notes: Notes):
             self._send(f.read_bytes(), _TYPES.get(f.suffix, "application/octet-stream"))
 
         def do_POST(self):
+            if not self._host_ok() or not self._origin_ok():
+                return self._json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
+            if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+                return self._json({"error": "expected application/json"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
             url = urllib.parse.urlparse(self.path)
-            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = self._read_json()
+            except (ValueError, UnicodeDecodeError):
+                return self._json({"error": "bad request"}, HTTPStatus.BAD_REQUEST)
             if url.path == "/api/notes":
                 match_id = urllib.parse.parse_qs(url.query).get("match", [""])[0]
-                if not any(m["match_id"] == match_id for m in lib.matches()):
+                if not _MATCH_ID.match(match_id) or not any(m["match_id"] == match_id for m in lib.matches()):
                     return self._json({"error": "unknown match"}, HTTPStatus.NOT_FOUND)
-                try:
-                    entry = json.loads(self.rfile.read(length) or b"{}")
-                except json.JSONDecodeError:
-                    return self._json({"error": "bad json"}, HTTPStatus.BAD_REQUEST)
-                return self._json(notes.put(match_id, entry if isinstance(entry, dict) else {}))
-            if url.path != "/api/cards":
-                return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
-            try:
-                names = json.loads(self.rfile.read(length) or b"[]")
-            except json.JSONDecodeError:
-                names = []
-            self._json(scry.resolve([n for n in names if isinstance(n, str)][:2000]))
+                return self._json(notes.put(match_id, body if isinstance(body, dict) else {}))
+            if url.path == "/api/cards":
+                names = body if isinstance(body, list) else []
+                return self._json(scry.resolve([n for n in names if isinstance(n, str) and len(n) < 200][:2000]))
+            return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     return Handler
 

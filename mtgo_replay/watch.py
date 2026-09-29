@@ -55,8 +55,11 @@ class Watcher:
 
     def load_state(self):
         if self.state_path.exists():
-            self.state = json.loads(self.state_path.read_text(encoding="utf-8"))
-            return
+            try:
+                self.state = json.loads(self.state_path.read_text(encoding="utf-8"))
+                return
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                log.warning("watch_state.json was unreadable; starting over")
         # first start: don't regenerate the whole history, only what comes next
         # (plus, optionally, the most recent matches so there is something to look at)
         files = paths.game_log_files()                    # newest first

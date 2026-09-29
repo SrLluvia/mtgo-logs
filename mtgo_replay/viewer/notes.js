@@ -57,7 +57,7 @@ async function saveTags() {
   const m = S.match;
   try {
     const res = await fetch(`/api/notes?match=${encodeURIComponent(m.match_id)}`,
-      { method: "POST", body: JSON.stringify(matchTags(m)) });
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(matchTags(m)) });
     if (res.ok) m.tags = await res.json();
     else alert("Could not save the note (is the viewer server still running?)");
   } catch (e) {
