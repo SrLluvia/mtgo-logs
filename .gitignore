@@ -1,0 +1,5 @@
+# personal data: generated reviews, MTGO log archive, card cache, watcher state
+output/
+data/
+__pycache__/
+*.pyc
