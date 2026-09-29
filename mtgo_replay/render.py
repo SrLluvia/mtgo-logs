@@ -20,6 +20,9 @@ def card_view(uid, o: dict, db: CardDB, objects: dict) -> dict:
     if o["counters"]:
         v["counters"] = {k: n for k, n in o["counters"].items() if n}
     info = db.info(o["name"]) if o["name"] else None
+    if info:
+        v["card"] = o["name"]              # real card name (for images); "name" is the display label
+        v["types"] = [t for t in info.types if t not in ("Legendary", "Basic")]
     if info and info.has("Creature") and o["zone"] == "battlefield":
         p, t = info.int_power(), info.int_toughness()
         plus = o["counters"].get("+1/+1", 0) - o["counters"].get("-1/-1", 0)
