@@ -63,6 +63,15 @@ Options: `--port 8765`, `--no-browser`.
 * `.txt`: for reading. Each log line followed by the resulting state.
 * `.json`: the same data, structured (meant for a frontend).
 
+About hidden information:
+
+* **Your hand.** The game log never names what anyone draws. With `mtgo.log` snapshots (see below)
+  your hand is exact at every action (~99 % of states). Without them, every card you later cast,
+  play, discard or exile from hand is shown from the moment it was *certainly* in your hand
+  (dated by its object id, or the latest draw it can have come from); the rest is "unknown".
+* **Library.** Only cards whose position is known are shown: put on top by an effect (in order)
+  or sent to the bottom (e.g. Atraxa). A shuffle forgets them. Scry/surveil don't name the cards.
+
 Legend used in the `.txt`:
 
 | Mark         | Meaning |

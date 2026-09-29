@@ -87,11 +87,12 @@ def process_match(ctx: Context, m: Match) -> Path:
         elif deck is not None and score > 0:
             sizes[me] = deck.size
             decks_txt[me] = f"{deck.name} ({deck.size} cards) — guessed: {score:.0%} of the cards you played are in it"
-        steps = GameEngine(events, g.players, db, sizes).run()
+        engine = GameEngine(events, g.players, db, sizes, me=me)
+        steps = engine.run()
         source = "reconstructed from the game log (see legend)"
         snaps = client.snapshots.get(game_id) if game_id else None
         if snaps:
-            n = apply_snapshots(steps, snaps, db, m.start.date(), me)
+            n = apply_snapshots(steps, snaps, db, m.start.date(), me, engine.hand_log.get(me, []))
             source = f"game log + {n} exact MTGO snapshots (life, hands, zones)"
         on_play = next((e.actor for e in events if e.kind == "play_first"), None)
         header = {

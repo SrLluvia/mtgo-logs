@@ -73,7 +73,7 @@ async function loadImages() {
   const add = (c) => c.card && !(c.card in S.images) && names.add(c.card);
   for (const st of S.data.steps) {
     for (const p of Object.values(st.state.players)) {
-      for (const z of ["battlefield", "graveyard", "exile", "hand_known", "library_known"]) p[z].forEach(add);
+      for (const z of ["battlefield", "graveyard", "exile", "hand_known", "library_top", "library_bottom"]) (p[z] || []).forEach(add);
     }
     for (const it of st.state.stack) if (it.source && !(it.source in S.images)) names.add(it.source);
   }
@@ -259,7 +259,9 @@ function renderPlayer(root, name, st, prev, isMe) {
   // --- piles
   const piles = el("div", "piles");
   piles.append(pileEl("Graveyard", p.graveyard, name), pileEl("Exile", p.exile, name));
-  if (p.library_known.length) piles.append(pileEl("Library (known)", p.library_known, name));
+  // only library cards whose position is known (put on top, or sent to the bottom)
+  if ((p.library_top || []).length) piles.append(pileEl("Library top", p.library_top, name, true));
+  if ((p.library_bottom || []).length) piles.append(pileEl("Library bottom", p.library_bottom, name));
   root.append(piles);
 
   // --- hand
@@ -274,14 +276,26 @@ function renderPlayer(root, name, st, prev, isMe) {
   root.append(hand);
 }
 
-function pileEl(label, cards, owner) {
+/** Identical cards (same name, counters and note) shown once with a ×N count. */
+function groupCards(cards) {
+  const groups = new Map();
+  for (const c of cards) {
+    const key = `${c.name}|${JSON.stringify(c.counters || {})}|${c.note || ""}|${c.uncertain ? 1 : 0}`;
+    const g = groups.get(key) || { card: c, n: 0 };
+    g.n += 1;
+    groups.set(key, g);
+  }
+  return [...groups.values()];
+}
+
+function pileEl(label, cards, owner, firstIsTop = false) {
   const pile = el("div", `pile ${cards.length ? "" : "empty-pile"}`);
-  const top = cards[cards.length - 1];
+  const top = firstIsTop ? cards[0] : cards[cards.length - 1];
   pile.append(top ? cardEl(top, {}) : el("div", "card"));
   const lab = el("div", "plabel", `${label} `);
   lab.append(el("b", "", String(cards.length)));
   pile.append(lab);
-  if (cards.length) pile.addEventListener("click", () => openModal(`${owner}'s ${label.toLowerCase()} (${cards.length})`, cards));
+  if (cards.length) pile.addEventListener("click", () => openModal(`${owner}'s ${label.toLowerCase()} (${cards.length})`, cards, !firstIsTop));
   return pile;
 }
 
@@ -387,10 +401,12 @@ function movePreview(e) {
 }
 function hidePreview() { $("preview").hidden = true; }
 
-function openModal(title, cards) {
+function openModal(title, cards, group = true) {
   $("modalTitle").textContent = title;
   const body = $("modalBody");
-  body.replaceChildren(...cards.map((c) => cardEl(c, {})));
+  // piles are grouped (×N); the top of the library keeps its order
+  const items = group ? groupCards(cards).map((g) => cardEl(g.card, { qty: g.n })) : cards.map((c) => cardEl(c, {}));
+  body.replaceChildren(...items);
   $("modal").hidden = false;
 }
 function closeModal() { $("modal").hidden = true; hidePreview(); }

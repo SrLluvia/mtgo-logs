@@ -42,6 +42,9 @@ def card_view(uid, o: dict, db: CardDB, objects: dict) -> dict:
 
 def state_view(state: dict, db: CardDB) -> dict:
     objects = state["objects"]
+
+    def lib_pos(c):
+        return objects[c["id"]].get("lib_pos")
     players = {}
     for name, p in state["players"].items():
         zones = {z: [] for z in ZONE_ORDER}
@@ -54,7 +57,10 @@ def state_view(state: dict, db: CardDB) -> dict:
             "life": p["life"], "life_approx": p["life_approx"],
             "hand_count": max(p["hand"], known_hand), "hand_known": zones["hand"],
             "library_count": p["library"], "library_approx": p["library_approx"],
-            "library_known": zones["library"],
+            # only cards whose position is known: put on top (in order) or at the bottom
+            "library_top": sorted((c for c in zones["library"] if (lib_pos(c) or "").startswith("top")),
+                                  key=lambda c: int(lib_pos(c)[3:])),
+            "library_bottom": [c for c in zones["library"] if lib_pos(c) == "bottom"],
             "counters": {k: n for k, n in p["counters"].items() if n},
             "battlefield": zones["battlefield"], "graveyard": zones["graveyard"], "exile": zones["exile"],
         }
@@ -102,7 +108,8 @@ def render_state_lines(view: dict, order: list[str]) -> list[str]:
             head += "  [exact]"
         out.append(head)
         rows = [("battlefield", p["battlefield"]), ("hand (known)", p["hand_known"]),
-                ("graveyard", p["graveyard"]), ("exile", p["exile"]), ("library (known)", p["library_known"])]
+                ("graveyard", p["graveyard"]), ("exile", p["exile"]),
+                ("library top", p["library_top"]), ("library bottom", p["library_bottom"])]
         for label, cards in rows:
             if cards:
                 out.append(f"      {label:<15} {_fmt_list(cards)}")
