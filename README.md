@@ -90,3 +90,8 @@ mtgo_replay/
   decks.py      mazos guardados y adivinar el mazo usado
   render.py     generar .txt y .json
 ```
+
+## Licencia
+
+[MIT](LICENSE): cualquiera puede usar, copiar, modificar y distribuir este código libremente,
+manteniendo el aviso de copyright.
