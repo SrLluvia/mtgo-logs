@@ -24,11 +24,12 @@ def card_view(uid, o: dict, db: CardDB, objects: dict) -> dict:
     if info:
         v["card"] = o["name"]              # real card name (for images); "name" is the display label
         v["types"] = [t for t in info.types if t not in ("Legendary", "Basic")]
-    if info and info.has("Creature") and o["zone"] == "battlefield":
-        p, t = info.int_power(), info.int_toughness()
-        plus = o["counters"].get("+1/+1", 0) - o["counters"].get("-1/-1", 0)
-        if p is not None and t is not None:
-            v["pt"] = f"{p + plus}/{t + plus}"
+    if o.get("pt") and o["zone"] == "battlefield" and (not info or info.has("Creature") or o.get("face_down")):
+        v["pt"] = o["pt"]                        # counters, equipment, anthems and "until end of turn" effects
+        if o.get("pt_base") and o["pt_base"] != o["pt"]:
+            v["pt_base"] = o["pt_base"]
+        if o.get("pt_mods"):
+            v["pt_mods"] = o["pt_mods"]
     for k in ("token", "attacking", "face_down", "uncertain"):
         if o.get(k):
             v[k] = True
@@ -40,6 +41,7 @@ def card_view(uid, o: dict, db: CardDB, objects: dict) -> dict:
         v["note"] = o["note"]
     if o.get("attached_to") and o["attached_to"] in objects:
         v["attached_to"] = objects[o["attached_to"]]["name"]
+        v["attached_to_id"] = o["attached_to"]
     if o["controller"] != o["owner"]:
         v["owner"] = o["owner"]
     return v
@@ -79,8 +81,8 @@ def _fmt_card(c: dict) -> str:
     extra = []
     if c.get("counters"):
         extra += [f"{k} ×{n}" if k not in ("loyalty",) else f"loyalty {n}" for k, n in c["counters"].items()]
-    if c.get("pt") and c.get("counters", {}).get("+1/+1") or c.get("pt") and c.get("counters", {}).get("-1/-1"):
-        extra.append(c["pt"])
+    if c.get("pt_base"):
+        extra.append(f"{c['pt']} (base {c['pt_base']})")
     if c.get("attacking"):
         extra.append("attacking")
     if c.get("tapped"):

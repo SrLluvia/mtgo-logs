@@ -54,6 +54,7 @@ class Obj:
     front: str | None = None
     tapped: bool = False
     tap_guess: bool = False   # tapped by our mana estimate, not by something the log shows
+    mods: list = field(default_factory=list)   # [(dp, dt, label, until_end_of_turn)]
     inc: int = 0          # bumps on every zone change / blink: a "new object" for the rules
 
     def label(self) -> str:
@@ -128,6 +129,8 @@ class GameEngine:
         self.hand_log: dict[str, list[tuple]] = {p: [] for p in players}
         self.last_untap: dict[str, int] = {p: -1 for p in players}
         self.last_exile_cost: tuple | None = None     # (source name, cards exiled, step) for delve
+        self.last_token_by: dict[int, int] = {}       # source uid -> uid of the last token it created
+        self._static_cache: dict[str, list] = {}
         self.players_order = players
         self.db = db
         self.players = {p: PlayerState(p) for p in players}
@@ -186,6 +189,7 @@ class GameEngine:
         if o.zone == zone:
             return
         was = o.zone
+        o.mods = []
         if was == "hand" and o.owner in self.hand_log:
             self.hand_log[o.owner].append((self._i, "out", o.name))
         elif zone == "hand" and o.owner in self.hand_log and not o.token:
@@ -584,6 +588,10 @@ class GameEngine:
                 self.search_effect(it, it.text.lower())
             if info.is_permanent:
                 self.move(o, "battlefield", keep_iid=True)   # MTGO keeps the id stack -> battlefield
+                if re.match(r"enchant ", info.text.lower()):
+                    hosts = [x for x in self.target_objs(it) if x.zone == "battlefield"]
+                    if hosts:
+                        self.attach(o, hosts[0], "aura")
                 o.controller = it.controller
                 if info.has("Planeswalker") and info.loyalty and info.loyalty.isdigit():
                     o.counters["loyalty"] = int(info.loyalty)
@@ -613,10 +621,59 @@ class GameEngine:
         return out
 
     def power_toughness(self, o: Obj) -> tuple[int | None, int | None]:
-        info = self.info(o.name)
-        p, t = info.int_power(), info.int_toughness()
+        p, t, _, _, _ = self.pt_details(o)
+        return p, t
+
+    def static_buffs(self, name: str | None) -> list:
+        """Static P/T effects in a card's text: [("attached"|"anthem"|"anthem_other", dp, dt)]."""
+        if name not in self._static_cache:
+            out = []
+            text = self.info(name).text.lower() if name else ""
+            for sentence in re.split(r"[.\n]", text):
+                if "until end of turn" in sentence:
+                    continue
+                m = re.search(r"(?:equipped|enchanted) creature gets ([+-]\d+)/([+-]\d+)", sentence)
+                if m:
+                    out.append(("attached", int(m.group(1)), int(m.group(2))))
+                m = re.search(r"(other )?creatures you control get ([+-]\d+)/([+-]\d+)", sentence)
+                if m:
+                    out.append(("anthem_other" if m.group(1) else "anthem", int(m.group(2)), int(m.group(3))))
+            self._static_cache[name] = out
+        return self._static_cache[name]
+
+    def pt_details(self, o: Obj):
+        """(power, toughness, base power, base toughness, [reasons]) or Nones when P/T is not a number."""
+        if o.face_down:
+            bp, bt = 2, 2
+        else:
+            info = self.info(o.name)
+            bp, bt = info.int_power(), info.int_toughness()
+        if bp is None or bt is None:
+            return None, None, None, None, []
+        p, t, why = bp, bt, []
         plus = o.counters.get("+1/+1", 0) - o.counters.get("-1/-1", 0)
-        return (None if p is None else p + plus, None if t is None else t + plus)
+        p, t = p + plus, t + plus
+        for dp, dt, label, eot in o.mods:
+            p, t = p + dp, t + dt
+            why.append(f"{dp:+d}/{dt:+d} {label}" + (" (until end of turn)" if eot else ""))
+        if o.zone == "battlefield":
+            for x in self.objs.values():
+                if x.zone != "battlefield" or x.face_down:
+                    continue
+                for kind, dp, dt in self.static_buffs(x.name):
+                    applies = (kind == "attached" and x.attached_to == o.uid) or \
+                              (kind == "anthem" and x.controller == o.controller and self.info(o.name).has("Creature")) or \
+                              (kind == "anthem_other" and x is not o and x.controller == o.controller
+                               and self.info(o.name).has("Creature"))
+                    if applies:
+                        p, t = p + dp, t + dt
+                        why.append(f"{dp:+d}/{dt:+d} {x.name}")
+        return p, t, bp, bt, why
+
+    def attach(self, what: Obj, host: Obj, why: str):
+        if what.zone == "battlefield" and host.zone == "battlefield":
+            what.attached_to = host.uid
+            self.note(f"{what.label()} attached to {host.label()} ({why})")
 
     def destroy(self, o: Obj, why: str, sure: bool):
         info = self.info(o.name)
@@ -649,6 +706,7 @@ class GameEngine:
                     self.by_iid.pop(o.iid, None)
                     o.iid = None
                     o.counters = Counter()
+                    o.mods = []
                     o.blinked_turn = self.turn
                     o.inc += 1
                     self.note(f"{o.label()} is blinked by {src} (inferred)")
@@ -674,6 +732,17 @@ class GameEngine:
             for o in tgts:
                 if live(o):
                     o.tapped = o.tap_guess = False
+
+        m = re.search(r"target creatures? gets? ([+-]\d+)/([+-]\d+) until end of turn", text)
+        if m:
+            for o in tgts:
+                if live(o):
+                    o.mods.append((int(m.group(1)), int(m.group(2)), src, True))
+        m = re.search(r"creatures you control get ([+-]\d+)/([+-]\d+) until end of turn", text)
+        if m:
+            for o in self.objs.values():
+                if o.zone == "battlefield" and o.controller == it.controller and self.info(o.name).has("Creature"):
+                    o.mods.append((int(m.group(1)), int(m.group(2)), src, True))
 
         if re.search(r"you may (?:cast|play) (?:that card|it|them)", text):
             for o in tgts:
@@ -891,6 +960,26 @@ class GameEngine:
         src = self.objs.get(it.source_uid) if it.source_uid else None
         if src is not None and it.source_inc >= 0 and src.inc != it.source_inc:
             src = None        # the source left or was blinked: it's a new object now
+        if src is not None and src.zone == "battlefield":
+            if t.startswith("prowess"):
+                src.mods.append((1, 1, "prowess", True))
+            m = re.search(r"(?:this creature|~) gets ([+-]\d+)/([+-]\d+) until end of turn", t)
+            if m:
+                src.mods.append((int(m.group(1)), int(m.group(2)), src.label(), True))
+            if t.startswith("equip"):
+                hosts = [o for o in self.target_objs(it) if o.zone == "battlefield"]
+                if hosts:
+                    self.attach(src, hosts[0], "equip")
+            if "attach this equipment to it" in t or "then attach this to it" in t:
+                if "cloak the top card" in t:
+                    host = self.new_obj("Cloaked creature", it.controller, "battlefield", face_down=True)
+                    host.note = "face-down 2/2 (cloaked)"
+                    self.players[it.controller].library -= 1
+                    self.attach(src, host, "cloak")
+                elif "you may" not in t and src.uid in self.last_token_by:
+                    token = self.objs.get(self.last_token_by[src.uid])
+                    if token is not None:
+                        self.attach(src, token, "living weapon")
         if t.startswith("evoke") and src is not None and src.zone == "battlefield":
             self.move(src, "graveyard")
             self.note(f"{src.label()} is sacrificed (evoke)")
@@ -979,6 +1068,10 @@ class GameEngine:
                 d = self.obj_state(o)
                 if o.zone == "library":
                     d["lib_pos"] = pos.get(o.uid)
+                if o.zone == "battlefield":
+                    pw, tg, bp, bt, why = self.pt_details(o)
+                    if pw is not None:
+                        d["pt"], d["pt_base"], d["pt_mods"] = f"{pw}/{tg}", f"{bp}/{bt}", why
                 objects[o.uid] = d
         return {
             "players": {n: {"life": p.life, "life_approx": p.life_approx, "approx_count": p.approx_count,
@@ -1135,6 +1228,7 @@ class GameEngine:
             o.damage = 0
             if o.note in ("evoked",):
                 o.note = ""
+            o.mods = [m for m in o.mods if not m[3]]          # "until end of turn" effects end
             if o.zone == "battlefield" and o.controller == self.active and not o.counters.get("stun"):
                 o.tapped = o.tap_guess = False                # untap step
         if self.active in self.last_untap:
@@ -1614,9 +1708,21 @@ class GameEngine:
             tgt = self.by_ref(ev.cards[-1])
             attached = tgt.uid if tgt else None
             name = name if name.endswith("Role") or name.endswith("Token") else f"{name} Role"
+        maker = self.by_ref(ev.cards[0]) if ev.cards else None
         for _ in range(n):
             o = self.new_obj(name, ev.actor, "battlefield", token=True)
             o.attached_to = attached
+            if maker is not None:
+                self.last_token_by[maker.uid] = o.uid
+
+    def on_other(self, ev: Event):
+        # "X chooses to use Cori-Steel Cutter's ability": the optional "you may attach this Equipment to it"
+        if "chooses to use" in ev.text and ev.cards:
+            src = self.by_ref(ev.cards[0])
+            if src is not None and "you may attach this equipment to it" in self.info(src.name).text.lower():
+                token = self.objs.get(self.last_token_by.get(src.uid, -1))
+                if token is not None:
+                    self.attach(src, token, "optional attach")
 
     def on_counter_on(self, ev: Event):
         what = ev.info.get("what", "")

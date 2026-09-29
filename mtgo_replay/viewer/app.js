@@ -179,10 +179,24 @@ function buildTimeline() {
 function render() {
   const st = S.data.steps[S.idx];
   const prev = S.data.steps[S.idx - 1];
+  // equipment / auras are drawn with the creature they are attached to
+  S.attached = new Map();
+  const onBattlefield = new Set();
+  for (const p of Object.values(st.state.players)) for (const c of p.battlefield) onBattlefield.add(String(c.id));
+  for (const p of Object.values(st.state.players)) {
+    for (const c of p.battlefield) {
+      const host = c.attached_to_id !== undefined ? String(c.attached_to_id) : null;
+      if (host && onBattlefield.has(host)) {
+        if (!S.attached.has(host)) S.attached.set(host, []);
+        S.attached.get(host).push(c);
+      }
+    }
+  }
   renderPlayer($("pTop"), S.opp, st, prev, false);
   renderPlayer($("pBottom"), S.me, st, prev, true);
   renderAction(st);
   renderStack(st.state.stack);
+  fitTable();
 
   const log = $("log");
   log.querySelector(".current")?.classList.remove("current");
@@ -198,6 +212,21 @@ function render() {
   history.replaceState(null, "", `#m=${encodeURIComponent(S.match.dir)}&g=${S.gameN}&s=${S.idx}`);
   renderNotes();
 }
+
+/** Crowded boards: shrink every card just enough for the table to fit without scrolling. */
+function fitTable() {
+  const root = document.documentElement;
+  const tbl = $("table");
+  let fit = 1;
+  root.style.setProperty("--fit", "1");
+  const over = () => tbl.scrollHeight > tbl.clientHeight + 1 || tbl.scrollWidth > tbl.clientWidth + 1;
+  for (let k = 0; k < 8 && over() && fit > 0.5; k++) {
+    const ratio = Math.min(tbl.clientHeight / tbl.scrollHeight, tbl.clientWidth / tbl.scrollWidth);
+    fit = Math.max(0.5, fit * Math.max(0.85, ratio));
+    root.style.setProperty("--fit", fit.toFixed(3));
+  }
+}
+window.addEventListener("resize", () => { if (S.data) fitTable(); });
 
 /** Cards that were not in that zone before this action get highlighted. */
 function newFlags(cards, prevCards) {
@@ -235,10 +264,10 @@ function renderPlayer(root, name, st, prev, isMe) {
   root.append(bar);
 
   // --- battlefield: non-lands and lands
-  const area = el("div", "field-area");
   const bf = p.battlefield;
   const isLand = (c) => (c.types || []).includes("Land") || (!c.card && /land|plains|island|swamp|mountain|forest/i.test(c.name));
-  const nonlands = bf.filter((c) => !isLand(c));
+  const isAttachment = (c) => c.attached_to_id !== undefined && [...S.attached.values()].some((l) => l.includes(c));
+  const nonlands = bf.filter((c) => !isLand(c) && !isAttachment(c));
   const lands = bf.filter(isLand);
   const prevBf = pp ? pp.battlefield : null;
   const rowOf = (cards, cls, groupSame) => {
@@ -255,12 +284,12 @@ function renderPlayer(root, name, st, prev, isMe) {
       });
       for (const g of groups.values()) row.append(cardEl(g.card, { qty: g.n, isNew: g.isNew }));
     } else {
-      cards.forEach((c, i) => row.append(cardEl(c, { isNew: flags[i] })));
+      cards.forEach((c, i) => row.append(withAttachments(c, cardEl(c, { isNew: flags[i] }))));
     }
     return row;
   };
-  area.append(rowOf(nonlands, "creatures", false), rowOf(lands, "lands", true));
-  root.append(area);
+  // lands in a compact block on the left, the other permanents large next to them
+  root.append(rowOf(lands, "lands", true), rowOf(nonlands, "creatures", false));
 
   // --- piles
   const piles = el("div", "piles");
@@ -272,6 +301,7 @@ function renderPlayer(root, name, st, prev, isMe) {
 
   // --- hand
   const hand = el("div", "hand");
+  hand.append(el("div", "hand-label", `Hand · ${p.hand_count}`));
   const row = el("div", "row");
   const flags = newFlags(p.hand_known, pp ? pp.hand_known : null);
   p.hand_known.forEach((c, i) => row.append(cardEl(c, { isNew: flags[i] })));
@@ -305,6 +335,23 @@ function pileEl(label, cards, owner, firstIsTop = false) {
   return pile;
 }
 
+/** A creature with its equipment/auras peeking out behind it. */
+function withAttachments(c, hostEl) {
+  const atts = S.attached.get(String(c.id));
+  if (!atts || !atts.length) return hostEl;
+  const group = el("div", "attach-group");
+  group.style.setProperty("--n", atts.length);
+  atts.forEach((a, i) => {
+    const e = cardEl(a, {});
+    e.classList.add("attached");
+    e.style.setProperty("--i", i + 1);
+    group.append(e);
+  });
+  hostEl.classList.add("host");
+  group.append(hostEl);
+  return group;
+}
+
 function counterText(k, n) {
   if (k === "+1/+1") return `+${n}/+${n}`;
   if (k === "-1/-1") return `-${n}/-${n}`;
@@ -313,13 +360,14 @@ function counterText(k, n) {
   return `${k} ${n}`;
 }
 
-function cardEl(c, { qty = 1, isNew = false } = {}) {
+function cardEl(c, { qty = 1, isNew = false, big = false } = {}) {
   const d = el("div", "card");
   const face = el("div", "face");            // rotated when tapped; badges stay upright on the card
   const img = c.card ? S.images[c.card] : null;
   if (img && img.small) {
     const i = el("img");
-    i.src = img.small; i.alt = c.name; i.loading = "lazy";
+    i.src = big && img.normal ? img.normal : img.small;       // big views get the high-res image
+    i.alt = c.name; i.loading = "lazy";
     face.append(i);
   } else {
     const t = el("div", "tile");
@@ -341,7 +389,14 @@ function cardEl(c, { qty = 1, isNew = false } = {}) {
     const txt = Object.entries(c.counters).map(([k, n]) => counterText(k, n)).join(" ");
     if (txt) d.append(el("span", "b cnt", txt));
   }
-  if (c.pt) d.append(el("span", "b pt", c.pt));
+  if (c.pt) {
+    const [p, t] = c.pt.split("/").map(Number);
+    const [bp, bt] = (c.pt_base || c.pt).split("/").map(Number);
+    const cls = p > bp || t > bt ? " up" : p < bp || t < bt ? " down" : "";
+    const b = el("span", `b pt${cls}`, c.pt);
+    if (c.pt_mods) b.title = `base ${c.pt_base || c.pt}\n${c.pt_mods.join("\n")}`;
+    d.append(b);
+  }
   if (qty > 1) d.append(el("span", "b qty", `×${qty}`));
   if (c.attached_to) d.append(el("span", "b on", `on ${c.attached_to}`));
   S.cardOf.set(d, c);
@@ -394,12 +449,15 @@ function showPreview(e) {
     else if (c.types) pv.append(el("div", "pv-type", c.types.join(" ")));
   }
   const meta = [];
-  if (c.pt) meta.push(`P/T ${c.pt}`);
+  if (c.pt) meta.push(`P/T ${c.pt}` + (c.pt_base ? ` (base ${c.pt_base})` : ""));
+  if (c.pt_mods) meta.push(...c.pt_mods);
+  const atts = S.attached && S.attached.get(String(c.id));
+  if (atts && atts.length) meta.push(`equipped/enchanted with ${atts.map((a) => a.name).join(", ")}`);
   if (c.tapped) meta.push(c.tap_guess ? "tapped for mana (estimate: the log never says which lands paid)" : "tapped");
   if (c.counters) meta.push(Object.entries(c.counters).map(([k, n]) => `${k}: ${n}`).join(", "));
   if (c.owner) meta.push(`owned by ${c.owner}`);
   if (c.attached_to) meta.push(`attached to ${c.attached_to}`);
-  if (meta.length) pv.append(el("div", "pv-meta", meta.join(" · ")));
+  if (meta.length) pv.append(el("div", "pv-meta", meta.join("\n")));
   if (c.note) pv.append(el("div", "pv-note", c.note));
   pv.hidden = false;
   movePreview(e);
@@ -418,7 +476,8 @@ function openModal(title, cards, group = true) {
   $("modalTitle").textContent = title;
   const body = $("modalBody");
   // piles are grouped (×N); the top of the library keeps its order
-  const items = group ? groupCards(cards).map((g) => cardEl(g.card, { qty: g.n })) : cards.map((c) => cardEl(c, {}));
+  const items = group ? groupCards(cards).map((g) => cardEl(g.card, { qty: g.n, big: true }))
+    : cards.map((c) => cardEl(c, { big: true }));
   body.replaceChildren(...items);
   $("modal").hidden = false;
 }
