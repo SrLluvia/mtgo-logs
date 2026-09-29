@@ -4,7 +4,27 @@ For every Magic Online game, writes an **action-by-action** log with the board s
 action: permanents (with counters and attackers), graveyards, exile, life totals, hand/library
 counts, known cards in hand and the stack.
 
-## Usage
+## Install (no Python needed)
+
+Download `MTGO-Replay-Setup-<version>.exe` from the
+[Releases page](https://github.com/SrLluvia/mtgo-logs/releases) and run it. Windows SmartScreen may
+say *"Windows protected your PC"* the first time because the installer isn't code-signed: click
+*More info* → *Run anyway*.
+
+* No administrator rights needed; it installs for your user only.
+* **Start with Windows** (checked by default): a background process keeps saving MTGO's exact game
+  data and writes the reviews of each match when it ends.
+* Double-click **MTGO Replay** (desktop / Start menu) to open the viewer in your browser. The first
+  time, your 10 most recent matches are generated, and the page fills in by itself.
+* Reviews, notes and caches live in `%LOCALAPPDATA%\MTGO Replay` (Start menu → *Reviews folder*).
+* Uninstall from *Settings → Apps*: it stops the background process and asks whether to delete your
+  reviews and notes too.
+
+MTGO's folders and your player name are detected automatically.
+
+## Usage from source
+
+
 
 Double-click `generate_logs.bat`, or from a terminal in this folder:
 
@@ -126,6 +146,16 @@ states (0.5 cards off on average). Life is the hardest part (fetched shocklands 
 named, exact timing of combat damage): exact in ~34 % of the states, hence the `≈` mark.
 With `mtgo.log` snapshots the values become exact.
 
+## Building the installer
+
+```
+powershell -ExecutionPolicy Bypass -File build_installer.ps1
+```
+
+Needs Python 3.10+ and [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+(`winget install JRSoftware.InnoSetup`). PyInstaller is installed into `.venv-build`. The result is
+`installer\Output\MTGO-Replay-Setup-<version>.exe` (version from `mtgo_replay/__init__.py`).
+
 ## Code layout
 
 ```
@@ -142,6 +172,7 @@ mtgo_replay/
   watch.py      automatic mode (--watch)
   render.py     write the .txt and .json files
   server.py     local web server for the viewer (--serve)
+  launcher.py   the installed app: background process (--background) and double-click (--launch)
   viewer/       the web viewer (plain HTML/CSS/JS, no build step)
 ```
 

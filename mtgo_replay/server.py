@@ -182,6 +182,8 @@ def make_handler(lib: Library, scry: Scryfall, notes: Notes):
         def do_GET(self):
             url = urllib.parse.urlparse(self.path)
             q = urllib.parse.parse_qs(url.query)
+            if url.path == "/api/ping":
+                return self._json({"app": "mtgo-replay", "ok": True})
             if url.path == "/api/matches":
                 return self._json([{**m, "tags": notes.get(m["match_id"])} for m in lib.matches()])
             if url.path == "/api/game":
@@ -221,9 +223,37 @@ def make_handler(lib: Library, scry: Scryfall, notes: Notes):
     return Handler
 
 
+class _Server(ThreadingHTTPServer):
+    # Windows lets SO_REUSEADDR bind a port another server is already listening on;
+    # without it a busy port fails and we move on to the next one
+    allow_reuse_address = False
+    daemon_threads = True
+
+
+def _handler(out: Path, data: Path):
+    return make_handler(Library(out), Scryfall(data / "scryfall.json"), Notes(data / "notes.json"))
+
+
+def start_in_background(out: Path, data: Path, first_port: int = 8765) -> int:
+    """Serve the viewer from a daemon thread on the first free port; record it in data/server.json."""
+    import os
+    handler = _handler(out, data)
+    for port in range(first_port, first_port + 20):
+        try:
+            server = _Server(("127.0.0.1", port), handler)
+            break
+        except OSError:
+            continue
+    else:
+        raise OSError("no free port for the viewer")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "server.json").write_text(json.dumps({"port": port, "pid": os.getpid()}), encoding="utf-8")
+    return port
+
+
 def serve(out: Path, data: Path, port: int = 8765, open_browser: bool = True):
-    handler = make_handler(Library(out), Scryfall(data / "scryfall.json"), Notes(data / "notes.json"))
-    server = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    server = _Server(("127.0.0.1", port), _handler(out, data))
     url = f"http://127.0.0.1:{port}/"
     print(f"MTGO viewer running at {url}  (Ctrl+C to stop)")
     if open_browser:
