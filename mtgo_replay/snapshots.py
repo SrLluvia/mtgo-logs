@@ -11,6 +11,8 @@ from __future__ import annotations
 import bisect
 import datetime as dt
 
+from collections import Counter
+
 from .carddb import CardDB
 
 ZONES = {"Battlefield": "battlefield", "Graveyard": "graveyard", "Exile": "exile",
@@ -34,11 +36,12 @@ def _overlay(state: dict, snap, db: CardDB):
     objects = {}
     # keep what the snapshot cannot tell: the opponent's known hand, known library cards
     for uid, o in state["objects"].items():
-        if o["zone"] in ("hand", "library") and o["owner"] not in _visible_hands(snap, names):
+        if (o["zone"] == "hand" and o["owner"] not in _visible_hands(snap, names)) or \
+                (o["zone"] == "library" and o.get("lib_pos")):
             objects[uid] = o
     for c in snap.cards:
         zone = ZONES.get(c["Zone"])
-        if zone is None:
+        if zone is None or zone == "library":      # snapshots don't say where in the library a card is
             continue
         name = db.name_by_catalog(c["CatalogID"]) or f"#{c['CatalogID']}"
         prev = by_iid.get(c["Id"], (None, None))[1]
@@ -68,22 +71,90 @@ def _carry_forward(state: dict, last: dict, hand: list[str], me: str | None):
         o = objs.get(uid)
         if o is not None and o["name"] is None:
             objs[uid] = {**o, "name": name, "placeholder": None, "note": ""}
-    # 2. warnings the snapshot confirmed
+    # 2. warnings the snapshot confirmed (step 3, the hand, is done separately: see _hands_between)
     seen = last["public"]
     for uid, o in list(objs.items()):
         if o.get("uncertain") and (o["name"], o["zone"], o["owner"]) in seen:
             objs[uid] = {**o, "uncertain": False, "note": ""}
-    # 3. my hand
-    if me is not None:
-        for uid in [u for u, o in objs.items() if o["zone"] == "hand" and o["owner"] == me]:
-            del objs[uid]
-        for k, name in enumerate(hand):
-            objs[f"h{k}"] = {"name": name, "iid": None, "owner": me, "controller": me, "zone": "hand",
-                             "counters": {}, "token": False, "attacking": False, "attached_to": None,
-                             "face_down": False, "note": "", "uncertain": False, "placeholder": None, "damage": 0}
 
 
-def apply_snapshots(steps, snaps, db: CardDB, date=None, me: str | None = None) -> int:
+def _set_hand(state: dict, me: str, names: list[str]):
+    objs = state["objects"]
+    for uid in [u for u, o in objs.items() if o["zone"] == "hand" and o["owner"] == me]:
+        del objs[uid]
+    for k, name in enumerate(names):
+        objs[f"h{k}"] = {"name": name, "iid": None, "owner": me, "controller": me, "zone": "hand",
+                         "counters": {}, "token": False, "attacking": False, "attached_to": None,
+                         "face_down": False, "note": "", "uncertain": False, "placeholder": None, "damage": 0}
+
+
+def _hands_between(log: list[tuple], a: int, b: int | None, start: list[str], end: list[str] | None,
+                   last_step: int) -> dict[int, list[str]]:
+    """Exact hand for every step strictly between two exact snapshots a and b.
+
+    Cards in the hand at `a` stay until the log shows them leaving.  Cards that show up
+    later (in the hand at `b`, or leaving before it) were drawn in between: each is put
+    on the latest draw it can have come from, so it is shown from when it was certainly there.
+    """
+    stop = b if b is not None else last_step + 1
+    events = [e for e in log if a < e[0] <= (b if b is not None else last_step)]
+    present = Counter(start)
+    left_at: list[tuple[str, int]] = []           # cards from `start` or known entries, and when they left
+    timeline: list[tuple[int, str, str]] = []     # (step, "+"/"-", name) for known cards
+    slots: list[int] = []
+    drawn: list[tuple[str, int]] = []             # (name, deadline): unknown draws identified later
+    for step, kind, val in sorted(events, key=lambda e: e[0]):
+        if kind in ("draw", "open"):
+            slots += [step] * val
+        elif kind == "in":
+            present[val] += 1
+            timeline.append((step, "+", val))
+        elif kind == "out":
+            if present[val] > 0:
+                present[val] -= 1
+                timeline.append((step, "-", val))
+            else:
+                drawn.append((val, step))
+    if end is not None:
+        for name, n in (Counter(end) - present).items():
+            drawn += [(name, b + 1)] * n
+
+    def feasible(pool, cards):
+        pool = sorted(pool)
+        for _, dl in sorted(cards, key=lambda c: c[1]):
+            s = next((x for x in pool if x < dl), None)
+            if s is None:
+                return False
+            pool.remove(s)
+        return True
+
+    placed = []
+    for card in drawn:
+        others = [c for c in drawn if c is not card]
+        for s in sorted({x for x in slots if x < card[1]}, reverse=True):
+            rest = list(slots)
+            rest.remove(s)
+            if feasible(rest, others):
+                placed.append((card[0], s, card[1]))
+                break
+
+    out = {}
+    cur = Counter(start)
+    tl = sorted(timeline)
+    k = 0
+    for t in range(a + 1, stop):
+        while k < len(tl) and tl[k][0] <= t:
+            _, sign, name = tl[k]
+            cur[name] += 1 if sign == "+" else -1
+            k += 1
+        names = list(cur.elements())
+        names += [n for n, s, dl in placed if s <= t < dl]
+        out[t] = names
+    return out
+
+
+def apply_snapshots(steps, snaps, db: CardDB, date=None, me: str | None = None,
+                    hand_log: list[tuple] | None = None) -> int:
     if not steps or not snaps:
         return 0
     stimes = _times(snaps, steps[0].event.time)
@@ -100,7 +171,7 @@ def apply_snapshots(steps, snaps, db: CardDB, date=None, me: str | None = None) 
     offsets: dict[str, dict[str, int]] = {}
     approx_at: dict[str, int] = {}
     last = None
-    hand: list[str] = []
+    exact_hands: dict[int, list[str]] = {}
     for i, st in enumerate(steps):
         players = st.state["players"]
         snap = exact.get(i)
@@ -129,15 +200,13 @@ def apply_snapshots(steps, snaps, db: CardDB, date=None, me: str | None = None) 
             last = {"named": named,
                     "public": {(o["name"], o["zone"], o["owner"]) for o in after.values()
                                if o["zone"] in ("battlefield", "graveyard", "exile")}}
-            hand = [o["name"] for o in after.values() if o["zone"] == "hand" and o["owner"] == me]
+            exact_hands[i] = [o["name"] for o in after.values() if o["zone"] == "hand" and o["owner"] == me]
             continue
-        ev = st.event
-        if me is not None and ev.actor == me and ev.kind in _LEAVE_HAND:
-            for ref in (ev.cards[:-1] if ev.kind == "exile_cost" else ev.cards[:1]):
-                if ref.name in hand:
-                    hand.remove(ref.name)
         if last is not None:
-            _carry_forward(st.state, last, hand, me)
+            _carry_forward(st.state, last, [], me)
+        if st.event.kind in ("begin_hand", "mull_bottom", "mulligan") and st.event.actor in offsets:
+            # a (re)dealt hand sets absolute counts: an earlier correction no longer applies
+            offsets[st.event.actor] = {**offsets[st.event.actor], "hand": 0, "library": 0}
         for name, off in offsets.items():
             mine = players.get(name)
             if mine is None:
@@ -146,4 +215,13 @@ def apply_snapshots(steps, snaps, db: CardDB, date=None, me: str | None = None) 
                 mine[k] += off[k]
             mine["library_approx"] = False
             mine["life_approx"] = mine.get("approx_count", 0) > approx_at.get(name, 0)
+
+    # my hand between (and after) exact snapshots, from the engine's record of hand movements
+    if me is not None and hand_log is not None and exact_hands:
+        marks = sorted(exact_hands)
+        for a, b in zip(marks, marks[1:] + [None]):
+            filled = _hands_between(hand_log, a, b, exact_hands[a], exact_hands[b] if b is not None else None,
+                                    len(steps) - 1)
+            for t, names in filled.items():
+                _set_hand(steps[t].state, me, names)
     return len(exact)

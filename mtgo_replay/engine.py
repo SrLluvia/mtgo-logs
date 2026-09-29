@@ -90,6 +90,7 @@ class PlayerState:
     approx_count: int = 0                            # number of estimated life changes so far
     counters: Counter = field(default_factory=Counter)
     known_top: list = field(default_factory=list)   # uids known on top of library (top first)
+    known_bottom: list = field(default_factory=list)  # uids known to be at the bottom (order unknown)
 
 
 @dataclass
@@ -113,8 +114,15 @@ _EFFECT_KEYWORDS = {
 
 
 class GameEngine:
-    def __init__(self, events: list[Event], players: list[str], db: CardDB, deck_sizes: dict[str, int] | None = None):
+    def __init__(self, events: list[Event], players: list[str], db: CardDB, deck_sizes: dict[str, int] | None = None,
+                 me: str | None = None):
         self.events = events
+        self.me = me
+        # for inferring the log player's hand: unknown cards entering it, and when each one became known
+        self.hand_slots: dict[str, list[int]] = {p: [] for p in players}          # step of each hidden entry
+        self.hand_reveals: dict[str, list[tuple]] = {p: [] for p in players}      # (uid, step, fixed entry step|None)
+        # every hand movement, for merging with exact snapshots: (step, "open"|"draw", n) / (step, "in"|"out", name)
+        self.hand_log: dict[str, list[tuple]] = {p: [] for p in players}
         self.players_order = players
         self.db = db
         self.players = {p: PlayerState(p) for p in players}
@@ -173,6 +181,10 @@ class GameEngine:
         if o.zone == zone:
             return
         was = o.zone
+        if was == "hand" and o.owner in self.hand_log:
+            self.hand_log[o.owner].append((self._i, "out", o.name))
+        elif zone == "hand" and o.owner in self.hand_log and not o.token:
+            self.hand_log[o.owner].append((self._i, "in", o.name))
         o.inc += 1
         o.counters = Counter()
         if was == "battlefield":
@@ -187,6 +199,8 @@ class GameEngine:
             p = self.players[o.owner]
             if o.uid in p.known_top:
                 p.known_top.remove(o.uid)
+            if o.uid in p.known_bottom:
+                p.known_bottom.remove(o.uid)
         o.attached_to = None if zone != "battlefield" else o.attached_to
         o.exile_castable = False
         o.note = ""
@@ -258,6 +272,66 @@ class GameEngine:
                 break
         return last_below + 1
 
+    # Lines whose card id is the id the card had *in hand* (so it dates when it entered the hand);
+    # casts and land plays show a new id instead.
+    _HAND_ID_KINDS = ("discard", "exile_cost", "reveal_opening", "cycle", "reveal_many", "reveal", "suspend", "plotted")
+
+    def record_hand_reveal(self, o: Obj, ref: CardRef):
+        kind = self.events[self._i].kind
+        entry = self.alloc_index(ref.iid) if kind in self._HAND_ID_KINDS else None
+        self.hand_reveals.setdefault(o.owner, []).append((o.uid, self._i, entry))
+
+    def infer_hand(self, player: str):
+        """Show cards in `player`'s hand from the moment they were certainly there.
+
+        Every card that later leaves the hand (cast, played, discarded...) sat in one of the
+        hidden hand entries (opening hand, draws, tutors) before that.  When its in-hand id was
+        logged, the entry is exact.  Otherwise it is the *latest* entry it can have come from
+        while all the other cards still fit (a small scheduling problem): from then on it is
+        guaranteed to be in hand.
+        """
+        slots = sorted(self.hand_slots.get(player, []))
+        reveals = self.hand_reveals.get(player, [])
+        if not slots or not reveals:
+            return
+        free = list(slots)
+        fixed, loose = [], []
+        for uid, seen, entry in reveals:
+            if entry is not None:
+                cand = [s for s in free if s <= min(entry, seen - 1)]
+                if cand:
+                    s = max(cand)
+                    free.remove(s)
+                    fixed.append((uid, seen, s))
+                    continue
+            loose.append((uid, seen))
+
+        def feasible(pool: list[int], cards: list[tuple]) -> bool:
+            pool = sorted(pool)
+            for _, seen in sorted(cards, key=lambda c: c[1]):
+                slot = next((s for s in pool if s < seen), None)
+                if slot is None:
+                    return False
+                pool.remove(slot)
+            return True
+
+        placed = list(fixed)
+        for card in loose:
+            others = [c for c in loose if c is not card]
+            for s in sorted({s for s in free if s < card[1]}, reverse=True):
+                rest = list(free)
+                rest.remove(s)
+                if feasible(rest, others):
+                    placed.append((card[0], card[1], s))
+                    break
+        for uid, seen, start in placed:
+            o = self.objs[uid]
+            for step in self.steps[start:seen]:
+                objs = step.state["objects"]
+                if uid not in objs:
+                    objs[uid] = {**self.obj_state(o), "zone": "hand", "iid": None, "counters": {},
+                                 "controller": o.owner, "note": "", "uncertain": False}
+
     def take(self, ref: CardRef, from_zones: tuple, owner: str | None, hidden: str | None = "hand") -> Obj:
         """Find the object a ref talks about, which should be in one of `from_zones`.
 
@@ -278,7 +352,10 @@ class GameEngine:
         who = owner or self.active or self.players_order[0]
         if hidden in HIDDEN:
             # an unseen card leaves the hand/library; the hidden-zone count already includes it
-            return self.new_obj(ref.name, who, hidden, ref.iid)
+            o = self.new_obj(ref.name, who, hidden, ref.iid)
+            if hidden == "hand":
+                self.record_hand_reveal(o, ref)
+            return o
         if best is not None and best.zone == "stack" and any(z in from_zones for z in ("graveyard", "exile")):
             self.resolve_through(lambda it, u=best.uid: it.obj_uid == u)
             if best.zone in from_zones:
@@ -761,14 +838,22 @@ class GameEngine:
         what = re.sub(r"^an? ", "", m.group(2).strip()) or "card"
         for owner in players:
             p = self.players[owner]
-            p.known_top.clear()
+            self.shuffle(owner)
             p.library -= 1
             if "battlefield" in m.group(3):
                 ph = self.new_obj(None, owner, "battlefield", placeholder=f"{what} found with {it.source}")
                 self.note(f"{owner} puts an unknown {what} onto the battlefield ({it.source}, inferred)")
             else:
                 p.hand += 1
+                self.hand_slots[owner].append(self._i)
+                self.hand_log[owner].append((self._i, "draw", 1))
         return True
+
+    def shuffle(self, player: str):
+        """After a shuffle no library position is known any more."""
+        p = self.players[player]
+        p.known_top.clear()
+        p.known_bottom.clear()
 
     def ability_side_effects(self, it: StackItem):
         t = it.text.lower()
@@ -779,7 +864,7 @@ class GameEngine:
             self.move(src, "graveyard")
             self.note(f"{src.label()} is sacrificed (evoke)")
         if not self.search_effect(it, t) and "shuffle" in t:
-            self.players[it.controller].known_top.clear()
+            self.shuffle(it.controller)
         if src is not None and src.zone == "battlefield" and self.info(src.name).has("Saga"):
             chapters = len(re.findall(r"^(?:I|II|III|IV|V|VI)(?:, (?:I|II|III|IV|V|VI))* —", self.info(src.name).text, re.M))
             if chapters and src.counters.get("lore", 0) >= chapters:
@@ -852,12 +937,23 @@ class GameEngine:
         }
 
     def snapshot(self) -> dict:
+        pos = {}
+        for p in self.players.values():
+            pos.update({u: f"top{i}" for i, u in enumerate(p.known_top)})
+            pos.update({u: "bottom" for u in p.known_bottom})
+        objects = {}
+        for o in self.objs.values():
+            if o.zone != "gone":
+                d = self.obj_state(o)
+                if o.zone == "library":
+                    d["lib_pos"] = pos.get(o.uid)
+                objects[o.uid] = d
         return {
             "players": {n: {"life": p.life, "life_approx": p.life_approx, "approx_count": p.approx_count,
                             "hand": p.hand, "library": p.library,
                             "library_approx": p.library_approx, "counters": dict(p.counters)}
                         for n, p in self.players.items()},
-            "objects": {o.uid: self.obj_state(o) for o in self.objs.values() if o.zone != "gone"},
+            "objects": objects,
             "stack": [{"kind": it.kind, "controller": it.controller, "source": it.source,
                        "text": it.text if it.kind == "ability" else "",
                        "obj": it.obj_uid,
@@ -876,6 +972,8 @@ class GameEngine:
             except Exception as e:     # never lose the whole game to one odd line
                 self.note(f"{WARN} could not process this line ({type(e).__name__}: {e})")
             self.steps.append(Step(i, ev, self.turn, self.active, self.notes, self.snapshot()))
+        if self.me in self.players:
+            self.infer_hand(self.me)
         return self.steps
 
     # ------------------------------------------------ implicit stack resolution
@@ -1011,6 +1109,8 @@ class GameEngine:
         full = p.library + p.hand
         p.hand = ev.n
         p.library = full - ev.n
+        self.hand_slots[ev.actor] = [self._i] * ev.n        # a mulligan replaces the previous hand
+        self.hand_log[ev.actor].append((self._i, "open", ev.n))
 
     def on_mull_bottom(self, ev: Event):
         self.on_begin_hand(ev)
@@ -1028,6 +1128,8 @@ class GameEngine:
             else:
                 p.hand += 1
                 p.library -= 1
+                self.hand_slots[ev.actor].append(self._i)
+                self.hand_log[ev.actor].append((self._i, "draw", 1))
 
     def on_play_land(self, ev: Event):
         o = self.take(ev.cards[0], ("hand",), ev.actor)
@@ -1383,6 +1485,7 @@ class GameEngine:
                 rest_txt = rest_txt.replace(o.name, "", 1)
         text = self.info(rv["src"]).text.lower()
         rest_zone = "graveyard" if "rest into your graveyard" in text else "library"
+        rest_top = re.search(r"rest (?:back )?on top", text) is not None
         dest_zone = "battlefield" if "onto the battlefield" in text and "into your hand" not in text else "hand"
         for name in chosen:
             o = next((x for x in pool if x.name == name), None)
@@ -1398,7 +1501,9 @@ class GameEngine:
             for o in pool:
                 if o.uid in p.known_top:
                     p.known_top.remove(o.uid)
-        self.note(f"to {dest_zone}: {', '.join(chosen)}" + ("; the rest → graveyard" if rest_zone == "graveyard" else "; the rest → bottom of library"))
+                (p.known_top if rest_top else p.known_bottom).append(o.uid)
+        where = "graveyard" if rest_zone == "graveyard" else ("top of library" if rest_top else "bottom of library")
+        self.note(f"to {dest_zone}: {', '.join(chosen)}; the rest → {where}")
 
     def on_create(self, ev: Event):
         what = ev.info.get("what", "")
