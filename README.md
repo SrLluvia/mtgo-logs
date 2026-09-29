@@ -1,97 +1,103 @@
 # MTGO Replay Logs
 
-Genera, para cada partida de Magic Online, un log **acción por acción** con el estado de la mesa
-después de cada acción: permanentes (con contadores y atacantes), cementerios, exilio, vidas,
-cartas en mano/biblioteca, cartas conocidas en mano y la pila.
+For every Magic Online game, writes an **action-by-action** log with the board state after each
+action: permanents (with counters and attackers), graveyards, exile, life totals, hand/library
+counts, known cards in hand and the stack.
 
-## Uso
+## Usage
 
-Doble clic en `generar_logs.bat`, o desde una terminal en esta carpeta:
-
-```
-py -m mtgo_replay                 # las 10 últimas partidas
-py -m mtgo_replay --last 25       # las 25 últimas
-py -m mtgo_replay --match 78a8    # solo el match cuyo id empieza por 78a8
-py -m mtgo_replay --archive-only  # solo guarda las "fotos" de mtgo.log (ver abajo)
-```
-
-Solo necesita Python 3.10+ (sin dependencias). Las carpetas de MTGO se detectan solas.
-
-## Modo automático
+Double-click `generate_logs.bat`, or from a terminal in this folder:
 
 ```
-py -m mtgo_replay --watch         # o doble clic en vigilar.bat (con consola)
+py -m mtgo_replay                 # the 10 most recent matches
+py -m mtgo_replay --last 25       # the 25 most recent
+py -m mtgo_replay --match 78a8    # only the match whose id starts with 78a8
+py -m mtgo_replay --archive-only  # only save the mtgo.log snapshots (see below)
 ```
 
-`vigilar_mtgo.pyw` hace lo mismo sin ventana (ideal para arrancar con Windows). Cada 30 s:
+Requires Python 3.10+ (no dependencies) on Windows. MTGO's folders are found automatically.
 
-* guarda las "fotos" de `mtgo.log` antes de que MTGO las borre,
-* busca matches nuevos o modificados (también en carpetas nuevas que cree MTGO al actualizarse),
-* cuando un match termina ("wins the match", o 10 min sin cambios si alguien se desconecta),
-  genera sus logs en `output/`.
+## Automatic mode
 
-La primera vez marca todo el historial como ya visto; solo procesa lo que se juegue después.
-Solo puede haber una copia en marcha. Registro de actividad: `data/watch.log`.
-Opciones: `--interval 30` (segundos entre comprobaciones), `--idle 10` (minutos).
+```
+py -m mtgo_replay --watch         # or double-click watch.bat (with a console)
+```
 
-## Salida
+`watch_mtgo.pyw` does the same without a window (handy to start with Windows). Every 30 s it:
 
-`output/<fecha>_vs_<rival>/gameN.txt` y `gameN.json` (un archivo por partida del BO3).
+* saves the `mtgo.log` snapshots before MTGO erases them,
+* looks for new or changed matches (including new folders MTGO creates when it updates),
+* once a match is over ("wins the match", or 10 minutes without changes if someone disconnects),
+  writes its logs to `output/`.
 
-* `.txt`: para leer. Cada acción del log seguida del estado resultante.
-* `.json`: los mismos datos estructurados (pensado para un futuro frontend).
+On its first start it marks the existing history as already seen and only processes what is played
+afterwards. Only one copy can run at a time. Activity log: `data/watch.log`.
+Options: `--interval 30` (seconds between checks), `--idle 10` (minutes).
 
-Leyenda del `.txt`:
+To start it with Windows, put a shortcut in the Startup folder (`Win+R` → `shell:startup`) whose
+target is `pythonw.exe "<path>\watch_mtgo.pyw"`.
 
-| Marca        | Significado |
-|--------------|-------------|
-| `(inferred)` | No aparece en el log, pero se deduce de las reglas (p. ej. Fatal Push resolvió → criatura destruida). |
-| `⚠`          | Estimación o suposición (daño de combate, qué criatura se sacrificó, correcciones tardías). |
-| `≈`          | Valor aproximado (vida tras combate o tierras de choque; biblioteca rival `~`). |
-| `[exact]`    | Estado copiado de la "foto" exacta que guarda MTGO (ver abajo). |
+## Output
 
-## De dónde salen los datos
+`output/<date>_vs_<opponent>/gameN.txt` and `gameN.json` (one file per game of the match).
 
-1. **`Match_GameLog_*.dat`** (siempre disponible): el registro de eventos de MTGO. No dice qué robas,
-   cuándo resuelve un hechizo, cuándo muere una criatura, qué tierra buscó una fetch ni la vida.
-   El programa lo reconstruye:
-   * resolución de la pila deducida de lo que pasa después,
-   * efectos de hechizos/habilidades según su texto oracle (destruir, exiliar, devolver, daño, wipes, edictos, búsquedas…),
-   * daño de combate estimado con fuerza/resistencia y contadores,
-   * MTGO da un id nuevo y creciente a cada carta cada vez que cambia de zona: cuando más tarde aparece
-     una carta con un id "inesperado", se corrige el pasado (p. ej. qué tierra trajo una fetch).
-2. **Base de cartas de MTGO** (`CardDataSource`, offline): nombres, tipos, F/R, lealtad y texto oracle
-   con los mismos ids que usa el juego. Se cachea en `data/cards.json`.
-3. **Tus mazos guardados** (`grouping *.xml`): se adivina qué mazo usaste en cada match.
-4. **`mtgo.log`** (opcional, pero muy valioso): MTGO escribe ahí "fotos" exactas del estado
-   (vidas, tu mano, todas las zonas) y tu lista exacta. **MTGO borra ese archivo cada vez que se abre**,
-   así que el programa lo archiva en `data/clientlogs/` cada vez que se ejecuta. Las partidas con
-   fotos archivadas salen mucho más precisas (vida y mano exactas).
-   → Ejecuta el programa (o `--archive-only`) **antes de volver a abrir MTGO** para no perderlas.
+* `.txt`: for reading. Each log line followed by the resulting state.
+* `.json`: the same data, structured (meant for a frontend).
 
-## Precisión (medida contra las fotos exactas de MTGO, 5 partidas)
+Legend used in the `.txt`:
 
-Solo con el `.dat`: biblioteca 96 %, número de cartas en mano 88 %, zonas públicas idénticas en el 80 %
-de los estados (0,5 cartas de diferencia de media). La vida es lo más difícil (tierras de choque
-buscadas con fetch que nunca se nombran, momento exacto del daño de combate): exacta en ~34 %, por eso
-se marca con `≈`. Con fotos de `mtgo.log` los valores pasan a ser exactos.
+| Mark         | Meaning |
+|--------------|---------|
+| `(inferred)` | Not in the log, but follows from the rules (e.g. Fatal Push resolved → creature destroyed). |
+| `⚠`          | Estimate or guess (combat damage, which creature was sacrificed, late corrections). |
+| `≈`          | Approximate value (life after combat or shocklands; opponent's library shown as `~`). |
+| `[exact]`    | State copied from MTGO's own exact snapshot (see below). |
 
-## Estructura del código
+## Where the data comes from
+
+1. **`Match_GameLog_*.dat`** (always available): MTGO's event log. It does not say what you draw,
+   when a spell resolves, when a creature dies, which land a fetchland found, or life totals.
+   The program reconstructs them:
+   * stack resolution inferred from what happens next,
+   * spell/ability effects from their oracle text (destroy, exile, bounce, damage, wipes, edicts, searches…),
+   * combat damage estimated from power/toughness and counters,
+   * MTGO gives each card a new, increasing object id every time it changes zone: when a card later
+     shows up with an "unexpected" id, past states are corrected (e.g. which land a fetchland found).
+2. **MTGO's card database** (`CardDataSource`, offline): names, types, P/T, loyalty and oracle text,
+   keyed by the same ids the game uses. Cached in `data/cards.json`.
+3. **Your saved decks** (`grouping *.xml`): used to guess which deck you played in each match.
+4. **`mtgo.log`** (optional but very valuable): MTGO writes exact state snapshots there (life,
+   your hand, every zone) plus your exact decklist. **MTGO erases this file every time it starts**,
+   so the program archives it to `data/clientlogs/` whenever it runs. Games with archived
+   snapshots are much more accurate (exact life and hand).
+   → Run the program (or `--archive-only`, or keep `--watch` running) **before reopening MTGO**
+   so they are not lost.
+
+## Accuracy (measured against MTGO's exact snapshots, 5 games)
+
+From the `.dat` alone: library count 97 %, hand count 88 %, public zones identical in 80 % of the
+states (0.5 cards off on average). Life is the hardest part (fetched shocklands that are never
+named, exact timing of combat damage): exact in ~34 % of the states, hence the `≈` mark.
+With `mtgo.log` snapshots the values become exact.
+
+## Code layout
 
 ```
 mtgo_replay/
-  paths.py      localizar carpetas de MTGO
-  gamelog.py    leer los .dat (binario) y separar las partidas del match
-  events.py     convertir cada línea del log en un evento estructurado
-  carddb.py     base de cartas offline de MTGO
-  engine.py     motor de reconstrucción del estado
-  clientlog.py  archivar/leer mtgo.log (fotos exactas y listas)
-  snapshots.py  fusionar las fotos exactas con la reconstrucción
-  decks.py      mazos guardados y adivinar el mazo usado
-  render.py     generar .txt y .json
+  paths.py      locate MTGO's folders
+  gamelog.py    read the binary .dat files and split a match into games
+  events.py     turn each log line into a structured event
+  carddb.py     MTGO's offline card database
+  engine.py     game-state reconstruction engine
+  clientlog.py  archive/read mtgo.log (exact snapshots and decklists)
+  snapshots.py  merge exact snapshots into the reconstruction
+  decks.py      saved decks and guessing the deck used
+  pipeline.py   process one match into per-game files
+  watch.py      automatic mode (--watch)
+  render.py     write the .txt and .json files
 ```
 
-## Licencia
+## License
 
-[MIT](LICENSE): cualquiera puede usar, copiar, modificar y distribuir este código libremente,
-manteniendo el aviso de copyright.
+[MIT](LICENSE): anyone may use, copy, modify and distribute this code freely, as long as the
+copyright notice is kept.
