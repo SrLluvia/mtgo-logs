@@ -2,7 +2,7 @@
 /* Per-match tags: the opponent's deck, and review notes pinned to a game position.
    Stored by the local server in data/notes.json. Uses S, $, el, goTo, loadGame, loadMatch from app.js. */
 
-const matchTags = (m) => m.tags || (m.tags = { opp_deck: "", notes: [] });
+const matchTags = (m) => m.tags || (m.tags = { opp_deck: "", my_deck: "", notes: [] });
 const pendingCount = (m) => matchTags(m).notes.filter((n) => !n.done).length;
 
 function matchLabel(m) {
@@ -78,6 +78,13 @@ function setupNotes() {
       if (first) loadMatch(first.dir, 1, 0);
     }
   });
+  $("myDeck").addEventListener("change", () => {
+    matchTags(S.match).my_deck = $("myDeck").value.trim();
+    saveTags().then(renderInfo);
+  });
+  fetch("/api/decks").then((r) => (r.ok ? r.json() : [])).then((names) => {
+    $("myDeckList").replaceChildren(...names.map((n) => { const o = el("option"); o.value = n; return o; }));
+  }).catch(() => {});
   $("oppDeck").addEventListener("change", () => {
     matchTags(S.match).opp_deck = $("oppDeck").value.trim();
     saveTags();
@@ -98,6 +105,7 @@ function setupNotes() {
 /** Called when a match is shown. */
 function showMatchTags() {
   $("oppDeck").value = matchTags(S.match).opp_deck;
+  $("myDeck").value = matchTags(S.match).my_deck || "";
 }
 
 function jumpToNote(n) {

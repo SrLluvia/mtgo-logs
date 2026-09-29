@@ -8,15 +8,13 @@ from pathlib import Path
 
 from . import clientlog
 from .carddb import CardDB
-from .decks import Deck, deck_from_client_log, guess_deck, load_saved_decks
+from . import __version__
+from .decks import Deck, deck_from_client_log, guess_deck, identify_exact, load_saved_decks
 from .engine import GameEngine
 from .events import parse_events
 from .gamelog import Match
 from .render import write_game
 from .snapshots import apply_snapshots
-
-_ME_KINDS = ("cast", "play_land", "activate", "discard", "exile_cost", "reveal_opening", "cycle", "ninjutsu")
-
 
 def detect_me(files) -> str | None:
     """The account that appears in (almost) every match is the user."""
@@ -73,27 +71,24 @@ def process_match(ctx: Context, m: Match) -> Path:
     (out_dir / ".match").write_text(m.match_id)
 
     game_ids = client.games_of_match(m.match_id)
-    all_events = [parse_events(g.records, g.players) for g in m.games]
-    seen = Counter()
-    for evs in all_events:
-        for ev in evs:
-            if ev.actor == me and ev.kind in _ME_KINDS and ev.cards:
-                seen[ev.cards[0].name] += 1
-    deck, score = guess_deck(seen, ctx.decks)
-
-    for g, events in zip(m.games, all_events):
+    games = []
+    seen = Counter()                     # the player's own cards, as the engine attributed them
+    for g in m.games:
+        events = parse_events(g.records, g.players)
         game_id = game_ids[g.number - 1] if len(game_ids) >= g.number else None
-        decks_txt, sizes = {}, {}
-        if game_id in client.decks:
-            d = deck_from_client_log(client.decks[game_id][1], db)
-            sizes[me] = d.size
-            named, fit = guess_deck(d.main, ctx.decks)          # which saved deck is this exact list?
-            decks_txt[me] = f"{named.name if named and fit >= 0.9 else 'unnamed'} ({d.size} cards, exact list from MTGO client log)"
-        elif deck is not None and score > 0:
-            sizes[me] = deck.size
-            decks_txt[me] = f"{deck.name} ({deck.size} cards) — guessed: {score:.0%} of the cards you played are in it"
-        engine = GameEngine(events, g.players, db, sizes, me=me)
+        exact = deck_from_client_log(client.decks[game_id][1], db) if game_id in client.decks else None
+        engine = GameEngine(events, g.players, db, {me: exact.size} if exact else {}, me=me)
         steps = engine.run()
+        mine = Counter(o["name"] for o in steps[-1].state["objects"].values()
+                       if o["owner"] == me and o["name"] and not o["token"])
+        seen |= mine                     # max copies seen in any one game
+        games.append((g, events, game_id, exact, engine, steps))
+
+    guessed = guess_deck(seen, ctx.decks, m.start)
+    for g, events, game_id, exact, engine, steps in games:
+        deck = identify_exact(exact, ctx.decks, m.start) if exact else guessed
+        size = exact.size if exact else (deck.deck.size if deck.deck else None)
+        decks_txt = {me: f"{deck.label()} ({size} cards) — {deck.detail}" if size else deck.detail} if deck.how != "none" or deck.detail else {}
         source = "reconstructed from the game log (see legend)"
         snaps = client.snapshots.get(game_id) if game_id else None
         if snaps:
@@ -101,10 +96,12 @@ def process_match(ctx: Context, m: Match) -> Path:
             source = f"game log + {n} exact MTGO snapshots (life, hands, zones)"
         on_play = next((e.actor for e in events if e.kind == "play_first"), None)
         header = {
+            "app_version": __version__,
             "match_id": m.match_id, "game_id": game_id, "game": g.number,
             "date": f"{events[0].time:%Y-%m-%d %H:%M}" if events else "",
             "players": g.players if me not in g.players else [me] + [p for p in g.players if p != me],
             "me": me, "on_play": on_play, "winner": g.winner, "decks": decks_txt, "source": source,
+            "deck": {"name": deck.deck.name if deck.deck else None, "how": deck.how, "detail": deck.detail},
         }
         write_game(out_dir / f"game{g.number}.txt", out_dir / f"game{g.number}.json", header, steps, db)
     return out_dir

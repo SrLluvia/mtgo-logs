@@ -51,7 +51,8 @@ py -m mtgo_replay --watch         # or double-click watch.bat (with a console)
   writes its logs to `output/`.
 
 On its first start it marks the existing history as already seen and only processes what is played
-afterwards. Only one copy can run at a time. Activity log: `data/watch.log`.
+afterwards. Only one copy can run at a time. Activity log: `data/watch.log`. After an update, reviews written
+by an older version are regenerated when it starts, so old matches get the improvements too.
 Options: `--interval 30` (seconds between checks), `--idle 10` (minutes).
 
 To start it with Windows, put a shortcut in the Startup folder (`Win+R` → `shell:startup`) whose
@@ -75,6 +76,9 @@ Opens `http://127.0.0.1:8765/` in your browser with every generated match:
   turn marks, and a clickable log. The URL keeps the current position, so it can be bookmarked.
 
 * **Tags and review notes** per match, saved in `data/notes.json` (kept when reviews are regenerated):
+  * *my deck*: which of your saved decks you played. Detected automatically: identical to the exact
+    list MTGO saved for the game when available, otherwise the saved version that contains every card
+    you played (ties go to the one saved last before the match). Pick another one to correct it;
   * *vs deck*: the opponent's deck (suggests the names you already used), shown in the match list;
   * *Review notes*: press `N` (or use the box above the log) to pin a note to the current game and
     action ("should I have held Force here?"). Notes appear on the timeline and in the log, jump to
@@ -131,7 +135,8 @@ Legend used in the `.txt`:
      shows up with an "unexpected" id, past states are corrected (e.g. which land a fetchland found).
 2. **MTGO's card database** (`CardDataSource`, offline): names, types, P/T, loyalty and oracle text,
    keyed by the same ids the game uses. Cached in `data/cards.json`.
-3. **Your saved decks** (`grouping *.xml`): used to guess which deck you played in each match.
+3. **Your saved decks** (`grouping *.xml`): to name the deck you played in each match (MTGO never
+   logs deck names, only the exact card list when snapshots are available).
 4. **`mtgo.log`** (optional but very valuable): MTGO writes exact state snapshots there (life,
    your hand, every zone) plus your exact decklist. **MTGO erases this file every time it starts**,
    so the program archives it to `data/clientlogs/` whenever it runs. Games with archived

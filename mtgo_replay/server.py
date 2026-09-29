@@ -151,7 +151,7 @@ class Scryfall:
 class Notes:
     """Per-match tags and review notes, kept in data/notes.json (never overwritten by regenerating).
 
-    {match_id: {"opp_deck": str, "notes": [{"id", "game", "step", "turn", "text", "done"}]}}
+    {match_id: {"opp_deck": str, "my_deck": str, "notes": [{"id", "game", "step", "turn", "text", "done"}]}}
     """
 
     def __init__(self, file: Path):
@@ -166,10 +166,11 @@ class Notes:
                 file.replace(backup)             # keep the unreadable file instead of losing it
 
     def get(self, match_id: str) -> dict:
-        return self.data.get(match_id, {"opp_deck": "", "notes": []})
+        return {"opp_deck": "", "my_deck": "", "notes": [], **self.data.get(match_id, {})}
 
     def put(self, match_id: str, entry: dict) -> dict:
-        clean = {"opp_deck": str(entry.get("opp_deck", ""))[:80].strip(), "notes": []}
+        clean = {"opp_deck": str(entry.get("opp_deck", ""))[:80].strip(),
+                 "my_deck": str(entry.get("my_deck", ""))[:80].strip(), "notes": []}
         raw_notes = entry.get("notes", [])
         for n in (raw_notes if isinstance(raw_notes, list) else [])[:500]:
             try:
@@ -179,7 +180,7 @@ class Notes:
             except (KeyError, TypeError, ValueError):
                 continue
         with self.lock:
-            if clean["opp_deck"] or clean["notes"]:
+            if clean["opp_deck"] or clean["my_deck"] or clean["notes"]:
                 self.data[match_id] = clean
             else:
                 self.data.pop(match_id, None)
@@ -235,6 +236,9 @@ def make_handler(lib: Library, scry: Scryfall, notes: Notes):
             q = urllib.parse.parse_qs(url.query)
             if url.path == "/api/ping":
                 return self._json({"app": "mtgo-replay", "ok": True})
+            if url.path == "/api/decks":
+                from .decks import saved_deck_names
+                return self._json(saved_deck_names())
             if url.path == "/api/matches":
                 return self._json([{**m, "tags": notes.get(m["match_id"])} for m in lib.matches()])
             if url.path == "/api/game":

@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import clientlog, paths
+from . import __version__, clientlog, paths
 from .gamelog import read_match
 from .pipeline import Context, detect_me, process_match
 
@@ -69,6 +69,31 @@ class Watcher:
         log.info("First start: %d existing match logs marked as already seen, %d recent ones will be generated",
                  len(self.state), len(recent))
 
+    def refresh_outdated(self):
+        """Regenerate reviews written by an older version (e.g. after an update), so old matches
+        get the same improvements as new ones."""
+        by_id = {f.name[len("Match_GameLog_"):-len(".dat")]: f for f in paths.game_log_files()}
+        stale = []
+        for marker in self.out.glob("*/.match"):
+            try:
+                header = json.loads((marker.parent / "game1.json").read_text(encoding="utf-8"))["header"]
+            except (OSError, ValueError, KeyError):
+                continue
+            match_id = marker.read_text().strip()
+            if header.get("app_version") != __version__ and match_id in by_id:
+                stale.append(by_id[match_id])
+        if not stale:
+            return
+        if self.me is None:
+            self.me = detect_me(paths.game_log_files())
+        ctx = Context.load(self.out, self.data, self.me)
+        for f in stale:
+            try:
+                process_match(ctx, read_match(f))
+            except Exception:
+                log.exception("Could not regenerate %s", f.name)
+        log.info("Regenerated %d review(s) written by an older version", len(stale))
+
     def save_state(self):
         self.state_path.write_text(json.dumps(self.state), encoding="utf-8")
 
@@ -120,6 +145,10 @@ def run(out: Path, data: Path, interval: float = 30, idle_minutes: float = 10,
         log.info("Viewer available at http://127.0.0.1:%d/", port)
     w = Watcher(out, data, idle_minutes, first_batch)
     w.load_state()
+    try:
+        w.refresh_outdated()
+    except Exception:
+        log.exception("Error while regenerating older reviews")
     log.info("Watching MTGO folders every %ss (output: %s)", interval, out)
     try:
         while True:
