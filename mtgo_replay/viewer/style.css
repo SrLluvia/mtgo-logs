@@ -120,14 +120,16 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
 .card .b.on { left: 2px; right: 2px; bottom: 16px; text-align: center; font-weight: 500; font-size: 9.5px; }
 
 /* ---------- piles (graveyard / exile / known library) ---------- */
-.pile { width: var(--cw); cursor: pointer; text-align: center; }
-.pile .plabel { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.pile { width: var(--cw); min-width: 58px; cursor: pointer; text-align: center; }
+.pile .plabel { font-size: 10.5px; color: var(--muted); margin-top: 2px; line-height: 1.2; overflow-wrap: anywhere; }
 .pile .plabel b { color: var(--text); }
 .pile.empty-pile .card { opacity: .25; }
 .pile:hover .card { box-shadow: 0 0 0 1px var(--accent); }
 
 /* ---------- middle: current action + stack ---------- */
-.midline { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 2px 4px; }
+.midline { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; padding: 2px 4px; }
+.midline .stack { grid-column: 1; grid-row: 1; }      /* the stack on the left, the current action next to it */
+.midline .action { grid-column: 2; grid-row: 1; }
 .action { background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-height: 40px; }
 .action .atext { font-weight: 600; }
 .action .aturn { color: var(--muted); font-size: 12px; margin-right: 8px; }

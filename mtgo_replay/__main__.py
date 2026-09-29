@@ -1,4 +1,4 @@
-"""Command line entry point:  py -m mtgo_replay [--last N] [--watch] [--serve]"""
+"""Command line entry point:  py -m mtgo_replay [--last N] [--watch] [--serve] [--launch]"""
 from __future__ import annotations
 
 import argparse
@@ -7,16 +7,19 @@ from pathlib import Path
 
 from . import clientlog, paths
 from .gamelog import read_match
+from .launcher import data_home, frozen, launch
 from .pipeline import Context, detect_me, process_match
 
 ROOT = Path(__file__).resolve().parent.parent
+# the installed app keeps its files in %LOCALAPPDATA%\MTGO Replay; a source checkout next to the code
+HOME = data_home() if frozen() else ROOT
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Per-action game reviews from MTGO game logs")
     ap.add_argument("--last", type=int, default=10, help="number of most recent matches to process (default 10)")
-    ap.add_argument("--out", type=Path, default=ROOT / "output", help="output folder (default ./output)")
-    ap.add_argument("--data", type=Path, default=ROOT / "data", help="cache and archive folder")
+    ap.add_argument("--out", type=Path, default=HOME / "output", help="output folder (default ./output)")
+    ap.add_argument("--data", type=Path, default=HOME / "data", help="cache and archive folder")
     ap.add_argument("--match", help="process only the match whose id starts with this")
     ap.add_argument("--archive-only", action="store_true",
                     help="only save MTGO's client-log snapshots, generate nothing")
@@ -28,6 +31,13 @@ def main(argv=None):
     ap.add_argument("--serve", action="store_true", help="open the web viewer for the generated reviews")
     ap.add_argument("--port", type=int, default=8765, help="port for --serve (default 8765)")
     ap.add_argument("--no-browser", action="store_true", help="with --serve: don't open the browser")
+    ap.add_argument("--background", action="store_true",
+                    help="watcher + web viewer in one process, no window (what the installed app runs)")
+    ap.add_argument("--launch", action="store_true",
+                    help="start the background process if needed and open the viewer (the app's double-click)")
+    argv = sys.argv[1:] if argv is None else argv
+    if frozen() and not argv:
+        argv = ["--launch"]                       # double-clicking MTGO Replay.exe
     args = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -39,9 +49,14 @@ def main(argv=None):
         serve(args.out, args.data, args.port, not args.no_browser)
         return
 
-    if args.watch:
+    if args.launch:
+        launch(args.data, args.out)
+        return
+
+    if args.watch or args.background:
         from .watch import run
-        run(args.out, args.data, args.interval, args.idle)
+        run(args.out, args.data, args.interval, args.idle, with_server=args.background,
+            first_batch=10 if args.background else 0)
         return
 
     archived = clientlog.archive(args.data / "clientlogs")

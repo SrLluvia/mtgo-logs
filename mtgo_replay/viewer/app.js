@@ -17,7 +17,11 @@ const S = {
 // ------------------------------------------------------------------ loading
 async function init() {
   S.matches = await (await fetch("/api/matches")).json();
-  if (!S.matches.length) { $("empty").hidden = false; return; }
+  if (!S.matches.length) {                       // first run: the background app is still generating
+    $("empty").hidden = false;
+    setTimeout(() => location.reload(), 5000);
+    return;
+  }
   const sel = $("matchSel");
   setupNotes();                                        // tags, filters and notes (notes.js)
   sel.addEventListener("change", () => loadMatch(sel.value, 1, 0));
@@ -219,12 +223,16 @@ function fitTable() {
   const tbl = $("table");
   let fit = 1;
   root.style.setProperty("--fit", "1");
-  const over = () => tbl.scrollHeight > tbl.clientHeight + 1 || tbl.scrollWidth > tbl.clientWidth + 1;
+  tbl.style.overflow = "";
+  const SLACK = 4;               // sub-pixel rounding: less than the table's own padding, nothing is hidden
+  const over = () => tbl.scrollHeight > tbl.clientHeight + SLACK || tbl.scrollWidth > tbl.clientWidth + SLACK;
   for (let k = 0; k < 8 && over() && fit > 0.5; k++) {
     const ratio = Math.min(tbl.clientHeight / tbl.scrollHeight, tbl.clientWidth / tbl.scrollWidth);
     fit = Math.max(0.5, fit * Math.max(0.85, ratio));
     root.style.setProperty("--fit", fit.toFixed(3));
   }
+  // everything fits (give or take a rounding pixel): no scrollbar
+  if (!over()) tbl.style.overflow = "hidden";
 }
 window.addEventListener("resize", () => { if (S.data) fitTable(); });
 

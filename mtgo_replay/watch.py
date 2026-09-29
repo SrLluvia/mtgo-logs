@@ -46,8 +46,9 @@ def _single_instance(lock_path: Path):
 
 
 class Watcher:
-    def __init__(self, out: Path, data: Path, idle_minutes: float):
+    def __init__(self, out: Path, data: Path, idle_minutes: float, first_batch: int = 0):
         self.out, self.data, self.idle = out, data, idle_minutes * 60
+        self.first_batch = first_batch
         self.state_path = data / "watch_state.json"
         self.state: dict[str, float] = {}
         self.me: str | None = None
@@ -57,9 +58,13 @@ class Watcher:
             self.state = json.loads(self.state_path.read_text(encoding="utf-8"))
             return
         # first start: don't regenerate the whole history, only what comes next
-        self.state = {f.name: f.stat().st_mtime for f in paths.game_log_files()}
+        # (plus, optionally, the most recent matches so there is something to look at)
+        files = paths.game_log_files()                    # newest first
+        recent = [f for f in files if f.stat().st_size > 2000][: self.first_batch]
+        self.state = {f.name: f.stat().st_mtime for f in files if f not in recent}
         self.save_state()
-        log.info("First start: %d existing match logs marked as already seen", len(self.state))
+        log.info("First start: %d existing match logs marked as already seen, %d recent ones will be generated",
+                 len(self.state), len(recent))
 
     def save_state(self):
         self.state_path.write_text(json.dumps(self.state), encoding="utf-8")
@@ -97,13 +102,20 @@ class Watcher:
         self.save_state()
 
 
-def run(out: Path, data: Path, interval: float = 30, idle_minutes: float = 10):
+def run(out: Path, data: Path, interval: float = 30, idle_minutes: float = 10,
+        with_server: bool = False, first_batch: int = 0):
+    """The watcher loop. With `with_server` the web viewer is served from the same process
+    (that is what the installed app runs in the background)."""
     _setup_logging(data)
     lock = _single_instance(data / "watch.lock")
     if lock is None:
         log.info("Another watcher is already running; exiting.")
         return
-    w = Watcher(out, data, idle_minutes)
+    if with_server:
+        from .server import start_in_background
+        port = start_in_background(out, data)
+        log.info("Viewer available at http://127.0.0.1:%d/", port)
+    w = Watcher(out, data, idle_minutes, first_batch)
     w.load_state()
     log.info("Watching MTGO folders every %ss (output: %s)", interval, out)
     try:
