@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 
 from .carddb import CardDB, CardInfo
 from .events import Event, CardRef, number, C
+from .mana import Cost, choose_sources, parse_braced_cost, parse_mtgo_cost, produced_colors
 
 WARN = "⚠"
 HIDDEN = ("library", "hand")
@@ -51,6 +52,8 @@ class Obj:
     blinked_turn: int | None = None
     born: int = 0
     front: str | None = None
+    tapped: bool = False
+    tap_guess: bool = False   # tapped by our mana estimate, not by something the log shows
     inc: int = 0          # bumps on every zone change / blink: a "new object" for the rules
 
     def label(self) -> str:
@@ -123,6 +126,8 @@ class GameEngine:
         self.hand_reveals: dict[str, list[tuple]] = {p: [] for p in players}      # (uid, step, fixed entry step|None)
         # every hand movement, for merging with exact snapshots: (step, "open"|"draw", n) / (step, "in"|"out", name)
         self.hand_log: dict[str, list[tuple]] = {p: [] for p in players}
+        self.last_untap: dict[str, int] = {p: -1 for p in players}
+        self.last_exile_cost: tuple | None = None     # (source name, cards exiled, step) for delve
         self.players_order = players
         self.db = db
         self.players = {p: PlayerState(p) for p in players}
@@ -210,9 +215,23 @@ class GameEngine:
             zone = "gone"
         o.zone = zone
         o.controller = o.owner if zone != "battlefield" else o.controller
+        o.tapped = o.tap_guess = False
+        if zone == "battlefield" and was != "battlefield":
+            o.tapped = self.enters_tapped(o)
         if not keep_iid and o.iid is not None:
             self.by_iid.pop(o.iid, None)
             o.iid = None
+
+    def enters_tapped(self, o: Obj) -> bool:
+        """From the oracle text; shocklands are assumed paid, "unless you control a <type>" assumed met."""
+        t = self.info(o.name).text.lower()
+        if re.search(r"enters tapped\.", t) and "enters tapped unless" not in t and "if you don't, it enters tapped" not in t:
+            return True
+        if "enters tapped unless you control two or fewer other lands" in t:
+            lands = [x for x in self.objs.values() if x.zone == "battlefield" and x.controller == o.controller
+                     and x is not o and (self.info(x.name).has("Land") or (x.name is None and x.placeholder))]
+            return len(lands) > 2
+        return False
 
     def leave_hidden(self, player: str, zone: str, n: int = 1):
         p = self.players[player]
@@ -432,6 +451,8 @@ class GameEngine:
                 step.state["players"][o.owner] = {**pl, "life": pl["life"] - 2, "life_approx": True}
         o.name = ref.name
         o.placeholder = None
+        if o.born > self.last_untap.get(o.owner, -1) and self.enters_tapped(o):
+            o.tapped = True               # a land that enters tapped, found before its controller untapped
         o.note = ""
         self.adopt(o, ref.iid)
         for step in self.steps[o.born:self._i]:
@@ -645,6 +666,15 @@ class GameEngine:
                     break
             return
 
+        if re.search(r"\btap (?:up to \w+ )?(?:another )?target", text):
+            for o in tgts:
+                if live(o):
+                    o.tapped, o.tap_guess = True, False
+        if re.search(r"\buntap (?:up to \w+ )?(?:another )?target", text):
+            for o in tgts:
+                if live(o):
+                    o.tapped = o.tap_guess = False
+
         if re.search(r"you may (?:cast|play) (?:that card|it|them)", text):
             for o in tgts:
                 o.exile_castable = True
@@ -842,6 +872,7 @@ class GameEngine:
             p.library -= 1
             if "battlefield" in m.group(3):
                 ph = self.new_obj(None, owner, "battlefield", placeholder=f"{what} found with {it.source}")
+                ph.tapped = "onto the battlefield tapped" in t
                 self.note(f"{owner} puts an unknown {what} onto the battlefield ({it.source}, inferred)")
             else:
                 p.hand += 1
@@ -934,6 +965,7 @@ class GameEngine:
             "counters": dict(o.counters), "token": o.token, "attacking": o.attacking,
             "attached_to": o.attached_to, "face_down": o.face_down, "note": o.note,
             "uncertain": o.uncertain, "placeholder": o.placeholder, "damage": o.damage,
+            "tapped": o.tapped, "tap_guess": o.tap_guess,
         }
 
     def snapshot(self) -> dict:
@@ -1103,6 +1135,10 @@ class GameEngine:
             o.damage = 0
             if o.note in ("evoked",):
                 o.note = ""
+            if o.zone == "battlefield" and o.controller == self.active and not o.counters.get("stun"):
+                o.tapped = o.tap_guess = False                # untap step
+        if self.active in self.last_untap:
+            self.last_untap[self.active] = self._i
 
     def on_begin_hand(self, ev: Event):
         p = self.players[ev.actor]
@@ -1178,6 +1214,56 @@ class GameEngine:
         it.targets = self.targets_of(ev, ev.cards[1:], info.text)
         it.target_controllers = [self.objs[v].controller for k, v in it.targets if k == "obj"]
         self.stack.append(it)
+        self.pay_mana(ev.actor, self.spell_cost(ref.name, info, rest), it.x or 0)
+
+    def spell_cost(self, name: str, info: CardInfo, rest: str) -> Cost:
+        """Mana actually paid for a spell, according to how the log says it was cast."""
+        text = info.text.lower()
+        if "without paying" in rest:
+            return Cost()
+        m = re.search(r"by paying (\{[^}]*\})", rest)
+        if m:                                              # warp, dash...
+            return parse_braced_cost(m.group(1))
+        if "Flashback" in rest:
+            m = re.search(r"Flashback (\{[^}]*\})", rest)
+            if m:
+                return parse_braced_cost(m.group(1))
+            return parse_mtgo_cost(info.cost) if "equal to its mana cost" in rest else Cost()
+        if "escape cost" in rest:
+            m = re.search(r"escape\s*—\s*((?:\{[^}]*\})+)", text)
+            return parse_braced_cost(m.group(1)) if m else Cost()
+        if "evoke" in rest:
+            m = re.search(r"evoke\s*—?\s*((?:\{[^}]*\})+)", text)
+            return parse_braced_cost(m.group(1)) if m else Cost()
+        if rest.lstrip().startswith("by "):                # pitch / alternative costs (Force of Negation, ...)
+            return Cost()
+        cost = parse_mtgo_cost(info.cost)
+        if "kicker" in rest:
+            m = re.search(r"kicker ((?:\{[^}]*\})+)", text)
+            if m:
+                k = parse_braced_cost(m.group(1))
+                cost.generic += k.generic
+                cost.pips += k.pips
+        if "delve" in text and self.last_exile_cost and self.last_exile_cost[0] == name \
+                and self.last_exile_cost[2] >= self._i - 1:
+            cost.generic = max(0, cost.generic - self.last_exile_cost[1])
+        return cost
+
+    def pay_mana(self, player: str, cost: Cost, x: int = 0, exclude: Obj | None = None):
+        """Estimate which untapped permanents were tapped for mana (the log never says)."""
+        if not cost or player not in self.players:
+            return
+        sources = []
+        for o in self.objs.values():
+            if o.zone != "battlefield" or o.controller != player or o.tapped or o is exclude or o.attacking:
+                continue
+            info = self.info(o.name)
+            colors = produced_colors(o.name, info.text, o.placeholder)
+            if colors:
+                sources.append((o, colors, info.has("Land") or o.name is None))
+        chosen, _ = choose_sources(cost, x, sources)
+        for o in chosen:
+            o.tapped, o.tap_guess = True, True
 
     def targets_of(self, ev: Event, refs: list[CardRef], text: str) -> list:
         n = ev.info.get("n_targets", 0)
@@ -1216,6 +1302,12 @@ class GameEngine:
         m = re.search(r"pay (\d+) life", cost)
         if m:
             self.change_life(ev.actor, -int(m.group(1)), f"{o.label()} cost")
+        paid = parse_braced_cost(cost.split(":")[0])
+        if paid.tap and o.zone == "battlefield":
+            o.tapped, o.tap_guess = True, False
+        if "{q}" in cost and o.zone == "battlefield":
+            o.tapped = o.tap_guess = False
+        self.pay_mana(ev.actor, paid, 0, exclude=o)
         if re.search(r"sacrifice (this|~|" + re.escape((o.name or "").lower()) + ")", cost) or re.search(r"sacrifice (this|it)\b", cost):
             self.move(o, "graveyard")
         elif re.search(r"exile (this|~|" + re.escape((o.name or "").lower()) + r")\b", cost):
@@ -1331,6 +1423,7 @@ class GameEngine:
         for ref in ev.cards[:-1]:
             o = self.take(ref, ("hand",) if hand_cost else ("graveyard", "hand"), owner, hidden="hand" if hand_cost else "late")
             self.to_zone(o, "exile")
+        self.last_exile_cost = (src_ref.name, len(ev.cards) - 1, self._i)
 
     def on_exile_own(self, ev: Event):
         o = self.see(ev.cards[0], "battlefield", ev.actor)
@@ -1579,6 +1672,9 @@ class GameEngine:
         for ref in refs:
             o = self.see(ref, "battlefield", attacker_side)
             o.attacking = True
+            info = self.info(o.name)
+            if "VIGILANCE" not in info.keywords and not re.search(r"(?:^|\n)vigilance", info.text.lower()):
+                o.tapped, o.tap_guess = True, False
             self.combat.append({"att": o.uid, "def": defender, "blockers": []})
         self.combat_done = False
 

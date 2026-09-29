@@ -51,6 +51,8 @@ def _overlay(state: dict, snap, db: CardDB):
             "controller": names.get(c["Controller"], "?"), "zone": zone,
             "counters": prev["counters"] if prev else {}, "token": info.has("Token"),
             "attacking": prev["attacking"] if prev else False, "attached_to": None,
+            "tapped": prev.get("tapped", False) if prev else False,
+            "tap_guess": prev.get("tap_guess", False) if prev else False,
             "face_down": False, "note": "", "uncertain": False, "placeholder": None, "damage": 0,
         }
     state["objects"] = objects
