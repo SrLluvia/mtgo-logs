@@ -10,7 +10,8 @@ from .engine import Step, WARN
 
 ZONE_ORDER = ("battlefield", "hand", "graveyard", "exile", "library")
 LEGEND = (f"Legend: (inferred) = not in the log, follows from the rules  ·  {WARN} = estimate / guess  ·  "
-          "≈ = approximate value  ·  [exact] = state taken from MTGO's own snapshot")
+          "≈ = approximate value  ·  [exact] = state taken from MTGO's own snapshot  ·  "
+          "tapped? = tapped for mana (estimate: the log never says which lands paid)")
 
 
 def card_view(uid, o: dict, db: CardDB, objects: dict) -> dict:
@@ -31,6 +32,10 @@ def card_view(uid, o: dict, db: CardDB, objects: dict) -> dict:
     for k in ("token", "attacking", "face_down", "uncertain"):
         if o.get(k):
             v[k] = True
+    if o["zone"] == "battlefield" and o.get("tapped"):
+        v["tapped"] = True
+        if o.get("tap_guess"):
+            v["tap_guess"] = True          # tapped for mana according to our estimate
     if o.get("note"):
         v["note"] = o["note"]
     if o.get("attached_to") and o["attached_to"] in objects:
@@ -78,6 +83,8 @@ def _fmt_card(c: dict) -> str:
         extra.append(c["pt"])
     if c.get("attacking"):
         extra.append("attacking")
+    if c.get("tapped"):
+        extra.append("tapped?" if c.get("tap_guess") else "tapped")
     if c.get("attached_to"):
         extra.append(f"on {c['attached_to']}")
     if c.get("owner"):

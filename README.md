@@ -69,6 +69,12 @@ About hidden information:
   your hand is exact at every action (~99 % of states). Without them, every card you later cast,
   play, discard or exile from hand is shown from the moment it was *certainly* in your hand
   (dated by its object id, or the latest draw it can have come from); the rest is "unknown".
+* **Tapped permanents.** Neither the log nor the snapshots record tapping. Certain: attackers (unless
+  vigilance), `{T}` ability costs, lands that enter tapped, "tap/untap target" effects and the untap
+  step. Estimated (`tapped?` / ⚠ in the viewer): lands and other sources tapped to pay each spell or
+  ability. The cost comes from how the log says it was cast (normal, warp, flashback, escape, evoke,
+  kicker, X, delve) and the sources are chosen by the colors they make. Phyrexian mana is assumed
+  paid with life, and cost reducers or rituals aren't modelled.
 * **Library.** Only cards whose position is known are shown: put on top by an effect (in order)
   or sent to the bottom (e.g. Atraxa). A shuffle forgets them. Scry/surveil don't name the cards.
 

@@ -242,7 +242,8 @@ function renderPlayer(root, name, st, prev, isMe) {
     if (groupSame) {
       const groups = new Map();
       cards.forEach((c, i) => {
-        const key = c.counters || c.note || c.attacking || c.uncertain ? `${c.id}` : c.name;
+        const key = c.counters || c.note || c.attacking || c.uncertain ? `${c.id}`
+          : `${c.name}|${c.tapped ? (c.tap_guess ? "tap?" : "tap") : ""}`;   // tapped and untapped lands apart
         const g = groups.get(key) || { card: c, n: 0, isNew: false };
         g.n += 1; g.isNew = g.isNew || flags[i];
         groups.set(key, g);
@@ -309,17 +310,23 @@ function counterText(k, n) {
 
 function cardEl(c, { qty = 1, isNew = false } = {}) {
   const d = el("div", "card");
+  const face = el("div", "face");            // rotated when tapped; badges stay upright on the card
   const img = c.card ? S.images[c.card] : null;
   if (img && img.small) {
     const i = el("img");
     i.src = img.small; i.alt = c.name; i.loading = "lazy";
-    d.append(i);
+    face.append(i);
   } else {
     const t = el("div", "tile");
     t.append(el("div", "tname", c.name));
     if (c.types) t.append(el("div", "ttype", c.types.join(" ")));
-    d.append(t);
+    face.append(t);
     if (!c.card) d.classList.add("unknown");
+  }
+  d.append(face);
+  if (c.tapped) {
+    d.classList.add("tapped");
+    if (c.tap_guess) { d.classList.add("tap-guess"); d.append(el("span", "b tapq", "⚠")); }
   }
   if (c.token) d.classList.add("token");
   if (isNew) d.classList.add("new");
@@ -383,6 +390,7 @@ function showPreview(e) {
   }
   const meta = [];
   if (c.pt) meta.push(`P/T ${c.pt}`);
+  if (c.tapped) meta.push(c.tap_guess ? "tapped for mana (estimate: the log never says which lands paid)" : "tapped");
   if (c.counters) meta.push(Object.entries(c.counters).map(([k, n]) => `${k}: ${n}`).join(", "));
   if (c.owner) meta.push(`owned by ${c.owner}`);
   if (c.attached_to) meta.push(`attached to ${c.attached_to}`);

@@ -106,9 +106,13 @@ def run(out: Path, data: Path, interval: float = 30, idle_minutes: float = 10):
     w = Watcher(out, data, idle_minutes)
     w.load_state()
     log.info("Watching MTGO folders every %ss (output: %s)", interval, out)
-    while True:
-        try:
-            w.tick()
-        except Exception:
-            log.exception("Error while checking for new matches")
-        time.sleep(interval)
+    try:
+        while True:
+            try:
+                w.tick()
+            except Exception:
+                log.exception("Error while checking for new matches")
+            time.sleep(interval)
+    except BaseException as e:            # Ctrl+C, shutdown... leave a trace of why it stopped
+        log.info("Watcher stopped (%s)", type(e).__name__)
+        raise

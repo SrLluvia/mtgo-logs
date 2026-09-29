@@ -80,16 +80,24 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
 .card { position: relative; width: var(--cw); height: var(--ch); border-radius: 5px; flex: none;
   background: #26332c; border: 1px solid #3a4a41; overflow: visible; cursor: default;
   transition: transform .12s, box-shadow .12s; }
+.card .face { position: absolute; inset: 0; border-radius: 4px; transition: transform .15s; }
 .card img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; display: block; }
 .card .tile { position: absolute; inset: 0; padding: 5px; font-size: 10.5px; line-height: 1.2; display: flex;
   flex-direction: column; gap: 3px; overflow: hidden; border-radius: 4px; }
+/* tapped: the card takes a landscape slot and its face turns 90° like in MTGO */
+.card.tapped { width: var(--ch); height: var(--cw); margin-top: calc(var(--ch) - var(--cw)); background: transparent; border-color: transparent; }
+.card.tapped .face { inset: auto; width: var(--cw); height: var(--ch); left: 50%; top: 50%;
+  transform: translate(-50%, -50%) rotate(90deg); border: 1px solid #3a4a41; background: #26332c; }
+.card.tap-guess .face { outline: 2px dashed var(--warn); outline-offset: 1px; }
+.card .b.tapq { left: -4px; top: -4px; color: var(--warn); }
+.pile .card.tapped, .stack-item .card.tapped { width: calc(var(--cw) * .9); height: calc(var(--ch) * .9); margin: 0; }
 .card .tile .tname { font-weight: 600; }
 .card .tile .ttype { color: var(--muted); font-size: 9.5px; }
 .card.unknown { background: repeating-linear-gradient(45deg, #26332c, #26332c 6px, #2c3a32 6px, #2c3a32 12px); }
 .card.token { border-style: dashed; }
 .card:hover { transform: translateY(-3px); z-index: 5; }
-.card.new { box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(217,179,91,.7); }
-.card.attacking { box-shadow: 0 0 0 2px var(--opp), 0 0 12px rgba(212,106,95,.8); transform: rotate(-4deg); }
+.card.new .face { box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(217,179,91,.7); }
+.card.attacking .face { box-shadow: 0 0 0 2px var(--opp), 0 0 12px rgba(212,106,95,.8); }
 .card.uncertain { outline: 2px dashed var(--warn); outline-offset: 1px; }
 .card .b { position: absolute; font-size: 10.5px; font-weight: 700; border-radius: 4px; padding: 0 4px;
   background: rgba(10,14,12,.88); border: 1px solid #4a5a51; white-space: nowrap; }

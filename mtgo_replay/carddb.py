@@ -19,7 +19,7 @@ from pathlib import Path
 
 from . import paths
 
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 
 _TYPE_FLAGS = {
     "IS_CREATURE": "Creature", "IS_LAND": "Land", "INSTANT": "Instant", "SORCERY": "Sorcery",
@@ -43,6 +43,7 @@ class CardInfo:
     mv: int = 0
     text: str = ""
     keywords: tuple[str, ...] = ()
+    cost: str = ""          # MTGO mana cost, e.g. "1UU", "X#bp-" (see mana.py)
 
     def has(self, t: str) -> bool:
         return t in self.types
@@ -84,6 +85,7 @@ def build(folder: Path) -> dict:
     oracle = _load_strings(folder, "REAL_ORACLETEXT_STRING")
     loyalty = _load_strings(folder, "LOYALTY_STRING")
     mana_value = _load_strings(folder, "CONVERTED_MANA_COST")
+    mana_cost = _load_strings(folder, "MANA_COST_STRING")
 
     raw: dict[int, dict] = {}
     for f in sorted(folder.glob("client_*.xml")):
@@ -129,6 +131,7 @@ def build(folder: Path) -> dict:
                 "toughness": a.get("TOUGHNESS"),
                 "loyalty": loyalty.get(a.get("LOYALTY_STRING", ""), "") or None,
                 "mv": _to_int(mana_value.get(a.get("CONVERTED_MANA_COST", ""))) or 0,
+                "cost": mana_cost.get(a.get("MANA_COST_STRING", ""), "") or "",
                 "text": _clean_text(oracle.get(a.get("REAL_ORACLETEXT_STRING", ""), "")),
                 "keywords": sorted(k for k in _KEYWORD_FLAGS if a.get(k, "0") not in ("0", None)),
             }
@@ -177,4 +180,4 @@ class CardDB:
         if d is None:
             types = ["Token", "Creature"] if name.endswith("Token") else []
             return CardInfo(name, types)
-        return CardInfo(name, d["types"], d["power"], d["toughness"], d["loyalty"], d["mv"], d["text"], tuple(d["keywords"]))
+        return CardInfo(name, d["types"], d["power"], d["toughness"], d["loyalty"], d["mv"], d["text"], tuple(d["keywords"]), d.get("cost", ""))
