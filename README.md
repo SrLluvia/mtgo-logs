@@ -54,6 +54,13 @@ Opens `http://127.0.0.1:8765/` in your browser with every generated match:
 * navigation: `←`/`→` previous/next action, `↑`/`↓` previous/next turn, `Home`/`End`, a timeline with
   turn marks, and a clickable log. The URL keeps the current position, so it can be bookmarked.
 
+* **Tags and review notes** per match, saved in `data/notes.json` (kept when reviews are regenerated):
+  * *vs deck*: the opponent's deck (suggests the names you already used), shown in the match list;
+  * *Review notes*: press `N` (or use the box above the log) to pin a note to the current game and
+    action ("should I have held Force here?"). Notes appear on the timeline and in the log, jump to
+    their position when clicked, and can be ticked as reviewed;
+  * *Show*: filter the match list by opponent deck, matches with notes to review, or untagged ones.
+
 Options: `--port 8765`, `--no-browser`.
 
 ## Output

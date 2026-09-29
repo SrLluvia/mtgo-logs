@@ -186,3 +186,24 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
   .layout { grid-template-columns: 1fr; grid-template-rows: 1fr 220px; }
   .log { border-left: 0; border-top: 1px solid var(--line); }
 }
+
+/* ---------- tags & review notes ---------- */
+input#oppDeck, input#noteText { font: inherit; color: var(--text); background: #1d2621; border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 8px; }
+.notes { display: flex; flex-direction: column; max-height: 38%; border-bottom: 1px solid var(--line); }
+.notes ul { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; }
+.note { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; align-items: baseline;
+  padding: 4px 10px; font-size: 12.5px; border-left: 3px solid transparent; }
+.note.here { background: #283a2f; border-left-color: var(--accent); }
+.note.done .ntext { color: var(--muted); text-decoration: line-through; }
+.note .npos { padding: 0 6px; font-size: 11px; color: var(--accent); background: #1d2621; white-space: nowrap; }
+.note .ntext { cursor: pointer; overflow-wrap: anywhere; }
+.note .ndel { padding: 0 5px; font-size: 11px; background: transparent; border-color: transparent; color: var(--muted); }
+.note .ndel:hover { color: var(--opp); }
+.note.empty-notes { display: block; color: var(--muted); font-size: 12px; }
+.note-form { display: flex; gap: 6px; padding: 6px 10px 8px; }
+.note-form input { flex: 1; min-width: 0; }
+.note-tick { position: absolute; top: -26px; width: 9px; height: 9px; margin-left: -4px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--panel); }
+.note-tick.done { background: var(--muted); }
+.log li .nmark { color: var(--accent); margin-left: 5px; }
