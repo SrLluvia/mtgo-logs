@@ -33,6 +33,7 @@ def _times(snaps, first_event: dt.datetime) -> list[dt.datetime]:
 def _overlay(state: dict, snap, db: CardDB):
     names = {p["Id"]: p["Name"] for p in snap.players}
     by_iid = {o["iid"]: (uid, o) for uid, o in state["objects"].items() if o.get("iid") is not None}
+    snap_key = {uid: f"s{o['iid']}" for uid, o in state["objects"].items() if o.get("iid") is not None}
     objects = {}
     # keep what the snapshot cannot tell: the opponent's known hand, known library cards
     for uid, o in state["objects"].items():
@@ -50,9 +51,12 @@ def _overlay(state: dict, snap, db: CardDB):
             "name": name, "iid": c["Id"], "owner": names.get(c["Owner"], "?"),
             "controller": names.get(c["Controller"], "?"), "zone": zone,
             "counters": prev["counters"] if prev else {}, "token": info.has("Token"),
-            "attacking": prev["attacking"] if prev else False, "attached_to": None,
+            "attacking": prev["attacking"] if prev else False,
             "tapped": prev.get("tapped", False) if prev else False,
             "tap_guess": prev.get("tap_guess", False) if prev else False,
+            "pt": prev.get("pt") if prev else None, "pt_base": prev.get("pt_base") if prev else None,
+            "pt_mods": prev.get("pt_mods", []) if prev else [],
+            "attached_to": snap_key.get(prev.get("attached_to")) if prev else None,
             "face_down": False, "note": "", "uncertain": False, "placeholder": None, "damage": 0,
         }
     state["objects"] = objects

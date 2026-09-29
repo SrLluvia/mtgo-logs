@@ -82,6 +82,11 @@ About hidden information:
   ability. The cost comes from how the log says it was cast (normal, warp, flashback, escape, evoke,
   kicker, X, delve) and the sources are chosen by the colors they make. Phyrexian mana is assumed
   paid with life, and cost reducers or rituals aren't modelled.
+* **Equipment, auras and P/T.** Equip activations, optional attaches (Cori-Steel Cutter), auras and
+  "attach this Equipment to it" effects attach the card to its creature (drawn behind it in the
+  viewer). The P/T shown includes counters, equipment/aura bonuses, anthems and "until end of turn"
+  effects (prowess, pump spells, "this creature gets +2/+0"); modified values are coloured and the
+  hover preview lists every modifier.
 * **Library.** Only cards whose position is known are shown: put on top by an effect (in order)
   or sent to the bottom (e.g. Atraxa). A shuffle forgets them. Scry/surveil don't name the cards.
 
