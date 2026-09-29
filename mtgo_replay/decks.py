@@ -4,7 +4,6 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import dataclass
-from pathlib import Path
 
 from . import paths
 from .carddb import CardDB

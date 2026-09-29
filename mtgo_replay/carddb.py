@@ -152,7 +152,10 @@ class CardDB:
         if folder is not None:
             stamp = int((folder / "CARDNAME_STRING.xml").stat().st_mtime)
         if cache.exists():
-            data = json.loads(cache.read_text(encoding="utf-8"))
+            try:
+                data = json.loads(cache.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                data = {}                                    # damaged cache: rebuild it
             if data.get("version") == CACHE_VERSION and (stamp is None or data.get("stamp") == stamp):
                 return cls(data)
         if folder is None:

@@ -15,8 +15,21 @@ const S = {
 };
 
 // ------------------------------------------------------------------ loading
+async function getJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+  return res.json();
+}
+
+function fail(err) {
+  const box = $("empty");
+  box.replaceChildren(el("h2", "", "Something went wrong"), el("p", "", String(err.message || err)),
+    el("p", "", "Is MTGO Replay still running? Reload the page to try again."));
+  box.hidden = false;
+}
+
 async function init() {
-  S.matches = await (await fetch("/api/matches")).json();
+  S.matches = await getJSON("/api/matches");
   if (!S.matches.length) {                       // first run: the background app is still generating
     $("empty").hidden = false;
     setTimeout(() => location.reload(), 5000);
@@ -54,8 +67,7 @@ async function loadMatch(dir, gameN, stepIdx) {
 async function loadGame(n, stepIdx) {
   S.gameN = n;
   for (const b of $("gameTabs").children) b.classList.toggle("active", +b.dataset.n === n);
-  const res = await fetch(`/api/game?dir=${encodeURIComponent(S.match.dir)}&n=${n}`);
-  S.data = await res.json();
+  S.data = await getJSON(`/api/game?dir=${encodeURIComponent(S.match.dir)}&n=${n}`);
   const h = S.data.header;
   [S.me, S.opp] = [h.players[0], h.players[1]];
   S.turnStarts = S.data.steps.map((s, i) => (s.kind === "turn" ? i : -1)).filter((i) => i >= 0);
@@ -78,7 +90,8 @@ async function loadImages() {
   }
   if (!names.size) return;
   try {
-    const res = await fetch("/api/cards", { method: "POST", body: JSON.stringify([...names]) });
+    const res = await fetch("/api/cards", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([...names]) });
     Object.assign(S.images, await res.json());
     render();
   } catch (e) { /* offline: text tiles stay */ }
@@ -500,4 +513,4 @@ window.addEventListener("hashchange", () => {
   } else if (+h.get("s") !== S.idx) goTo(+h.get("s") || 0);
 });
 
-init();
+init().catch(fail);

@@ -9,7 +9,8 @@ Write-Host "Building MTGO Replay $version"
 
 # 1. isolated build environment with PyInstaller
 if (-not (Test-Path ".venv-build\Scripts\python.exe")) { py -m venv .venv-build }
-& .venv-build\Scripts\python.exe -m pip install --quiet --disable-pip-version-check --upgrade pyinstaller
+# pinned: an unpinned build tool changes what ends up in the installer from one build to the next
+& .venv-build\Scripts\python.exe -m pip install --quiet --disable-pip-version-check "pyinstaller==6.22.3"
 if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed" }
 
 # 2. icon
