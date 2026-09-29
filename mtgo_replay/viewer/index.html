@@ -10,8 +10,17 @@
 <header class="topbar">
   <div class="brand">MTGO Replay</div>
   <label class="field">
+    <span>Show</span>
+    <select id="filterSel" title="Filter the match list"></select>
+  </label>
+  <label class="field">
     <span>Match</span>
     <select id="matchSel"></select>
+  </label>
+  <label class="field">
+    <span>vs deck</span>
+    <input id="oppDeck" list="deckList" placeholder="Opponent's deck" autocomplete="off" size="16">
+    <datalist id="deckList"></datalist>
   </label>
   <nav id="gameTabs" class="tabs" aria-label="Games"></nav>
   <div id="gameInfo" class="game-info"></div>
@@ -28,6 +37,14 @@
   </section>
 
   <aside class="log" aria-label="Game log">
+    <section class="notes" aria-label="Review notes">
+      <div class="log-head">Review notes <span id="notesCount"></span></div>
+      <ul id="notesList"></ul>
+      <form id="noteForm" class="note-form">
+        <input id="noteText" placeholder="Note at this action… (N)" autocomplete="off" maxlength="1000">
+        <button type="submit">Add</button>
+      </form>
+    </section>
     <div class="log-head">Log <span id="logCount"></span></div>
     <ol id="log"></ol>
   </aside>
@@ -61,6 +78,7 @@
   <p>Generate them first with <code>py -m mtgo_replay</code>, then reload this page.</p>
 </div>
 
+<script src="notes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -19,15 +19,7 @@ async function init() {
   S.matches = await (await fetch("/api/matches")).json();
   if (!S.matches.length) { $("empty").hidden = false; return; }
   const sel = $("matchSel");
-  for (const m of S.matches) {
-    const me = m.games[0].me;
-    const opp = m.players.find((p) => p !== me) || "?";
-    const wins = m.games.filter((g) => g.winner === me).length;
-    const losses = m.games.filter((g) => g.winner && g.winner !== me).length;
-    const o = el("option", "", `${m.date.slice(0, 16)} · vs ${opp} · ${wins}-${losses}`);
-    o.value = m.dir;
-    sel.append(o);
-  }
+  setupNotes();                                        // tags, filters and notes (notes.js)
   sel.addEventListener("change", () => loadMatch(sel.value, 1, 0));
   const h = new URLSearchParams(location.hash.slice(1));
   const dir = S.matches.some((m) => m.dir === h.get("m")) ? h.get("m") : S.matches[0].dir;
@@ -36,7 +28,9 @@ async function init() {
 
 async function loadMatch(dir, gameN, stepIdx) {
   S.match = S.matches.find((m) => m.dir === dir);
+  buildMatchOptions();
   $("matchSel").value = dir;
+  showMatchTags();
   const tabs = $("gameTabs");
   tabs.replaceChildren();
   for (const g of S.match.games) {
@@ -65,6 +59,7 @@ async function loadGame(n, stepIdx) {
   buildLog();
   buildTimeline();
   goTo(Math.min(stepIdx, S.data.steps.length - 1));
+  refreshNotes();
   loadImages();
 }
 
@@ -101,7 +96,16 @@ const nextTurn = () => {
 };
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { closeModal(); return; }
+  if (e.key === "Escape") {
+    closeModal();
+    if (e.target.tagName === "INPUT") e.target.blur();
+    return;
+  }
+  if (e.target.tagName === "INPUT") {                  // typing a note or a deck name
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
+  if (e.key === "n" || e.key === "N") { e.preventDefault(); $("noteText").focus(); return; }
   if (e.target.tagName === "SELECT" || !S.data) return;
   const k = { ArrowLeft: () => goTo(S.idx - 1), ArrowRight: () => goTo(S.idx + 1),
     ArrowUp: prevTurn, ArrowDown: nextTurn, PageUp: prevTurn, PageDown: nextTurn,
@@ -192,6 +196,7 @@ function render() {
   pos.append("Turn ", el("b", "", String(st.turn)), ` · ${st.active || "—"} · action `,
     el("b", "", String(S.idx)), ` / ${S.data.steps.length - 1}`);
   history.replaceState(null, "", `#m=${encodeURIComponent(S.match.dir)}&g=${S.gameN}&s=${S.idx}`);
+  renderNotes();
 }
 
 /** Cards that were not in that zone before this action get highlighted. */
