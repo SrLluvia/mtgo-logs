@@ -125,7 +125,7 @@ def render_state_lines(view: dict, order: list[str]) -> list[str]:
     if view["stack"]:
         items = []
         for it in reversed(view["stack"]):
-            s = f"{it['source']}" + (" (ability)" if it["kind"] == "ability" else "") + f" by {it['controller']}"
+            s = f"{it['source']}" + ((" (trigger)" if it.get("triggered") else " (ability)") if it["kind"] == "ability" else "") + f" by {it['controller']}"
             if it["targets"]:
                 s += " → " + ", ".join(str(t) for t in it["targets"])
             items.append(s)
