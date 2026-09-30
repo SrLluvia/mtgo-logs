@@ -77,6 +77,10 @@ select { font: inherit; color: var(--text); background: #20212a; border: 1px sol
 .stat { display: flex; align-items: baseline; gap: 4px; color: var(--muted); }
 .stat b { color: var(--text); font-size: 15px; }
 .stat.life b { font-size: 20px; color: #fff; }
+.delta { font-size: 12px; font-weight: 700; padding: 0 5px; border-radius: 4px; align-self: center; font-variant-numeric: tabular-nums; }
+.delta.neg { color: #ff9b8f; background: rgba(212,106,95,.18); }
+.delta.pos { color: #7fe0a0; background: rgba(108,195,138,.16); }
+.delta.info { color: var(--accent); background: rgba(217,179,91,.14); }
 .stat.approx b { color: var(--warn); }
 .badge-exact { font-size: 11px; color: var(--good); border: 1px solid #2f5a3d; border-radius: 4px; padding: 0 5px; }
 .pcounter { font-size: 12px; background: #2a2b33; border-radius: 4px; padding: 1px 6px; }
@@ -130,11 +134,24 @@ select { font: inherit; color: var(--text); background: #20212a; border: 1px sol
 .midline { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; padding: 2px 4px; }
 .midline .stack { grid-column: 1; grid-row: 1; }      /* the stack on the left, the current action next to it */
 .midline .action { grid-column: 2; grid-row: 1; }
-.action { background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-height: 40px; }
-.action .atext { font-weight: 600; }
-.action .aturn { color: var(--muted); font-size: 12px; margin-right: 8px; }
-.action ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; }
+.action { background: rgba(0,0,0,.28); border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px 10px; min-height: 40px; }
+.action .ahead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 6px; }
+.action .aturn { font-size: 12px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.action .aturn.of-me { color: var(--me); }
+.action .aturn.of-opp { color: var(--opp); }
+.action .atext { font-weight: 600; font-size: 17px; line-height: 1.3; }
+.action ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; }
 .action li.warn { color: var(--warn); }
+/* turn phases: all of them, the current one filled with the active player's colour */
+.phases { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.ph { font-size: 10.5px; padding: 2px 7px; border-radius: 4px; color: #6f7080; background: rgba(255,255,255,.03);
+  border: 1px solid transparent; white-space: nowrap; }
+.ph.done { color: var(--muted); }
+.ph.on { font-weight: 700; color: #0d0e12; }
+.ph.on.of-me { background: var(--me); }
+.ph.on.of-opp { background: var(--opp); }
+.pgroup { display: inline-flex; align-items: center; gap: 3px; padding: 1px 3px; border: 1px solid var(--line); border-radius: 6px; }
+.pglabel { font-size: 9px; text-transform: uppercase; letter-spacing: .6px; color: #6f7080; padding: 0 3px; }
 .stack { display: flex; gap: 6px; align-items: center; }
 .stack:empty { display: none; }
 .stack .slabel { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 10.5px; color: var(--muted);

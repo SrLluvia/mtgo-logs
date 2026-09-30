@@ -11,7 +11,7 @@ const el = (tag, cls, text) => {
 
 const S = {
   matches: [], match: null, gameN: 1, data: null, idx: 0,
-  me: null, opp: null, turnStarts: [], images: {}, cardOf: new WeakMap(),
+  me: null, opp: null, turnStarts: [], phases: [], images: {}, cardOf: new WeakMap(),
 };
 
 // ------------------------------------------------------------------ loading
@@ -71,6 +71,7 @@ async function loadGame(n, stepIdx) {
   const h = S.data.header;
   [S.me, S.opp] = [h.players[0], h.players[1]];
   S.turnStarts = S.data.steps.map((s, i) => (s.kind === "turn" ? i : -1)).filter((i) => i >= 0);
+  S.phases = inferPhases(S.data.steps, S.images);
   renderInfo();
   buildLog();
   buildTimeline();
@@ -93,6 +94,7 @@ async function loadImages() {
     const res = await fetch("/api/cards", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify([...names]) });
     Object.assign(S.images, await res.json());
+    S.phases = inferPhases(S.data.steps, S.images);     // card types are now known
     render();
   } catch (e) { /* offline: text tiles stay */ }
 }
@@ -271,14 +273,22 @@ function renderPlayer(root, name, st, prev, isMe) {
   if (st.active === name) nm.append(el("span", "active-dot"));
   nm.append(name);
   bar.append(nm);
-  const stat = (label, value, cls = "") => {
+  // what this action changed, next to the number: "−5" on the life total, "+1" cards in hand...
+  const stat = (label, value, cls = "", before = null, now = null, up = "pos") => {
     const s = el("div", `stat ${cls}`);
     s.append(el("b", "", value), label);
+    const d = before === null ? 0 : now - before;
+    if (d) {
+      const down = d < 0;
+      const chip = el("span", `delta ${down ? "neg" : up}`, `${down ? "−" : "+"}${Math.abs(d)}`);
+      chip.title = `${label}: ${before} → ${now}`;
+      s.append(chip);
+    }
     bar.append(s);
   };
-  stat("life", `${p.life_approx ? "≈" : ""}${p.life}`, `life ${p.life_approx ? "approx" : ""}`);
-  stat("in hand", String(p.hand_count));
-  stat("library", `${p.library_approx ? "~" : ""}${p.library_count}`);
+  stat("life", `${p.life_approx ? "≈" : ""}${p.life}`, `life ${p.life_approx ? "approx" : ""}`, pp && pp.life, p.life);
+  stat("in hand", String(p.hand_count), "", pp && pp.hand_count, p.hand_count, "info");
+  stat("library", `${p.library_approx ? "~" : ""}${p.library_count}`, "", pp && pp.library_count, p.library_count, "info");
   for (const [k, v] of Object.entries(p.counters || {})) bar.append(el("span", "pcounter", `${k} ${v}`));
   if (p.exact) bar.append(el("span", "badge-exact", "exact"));
   root.append(bar);
@@ -429,14 +439,36 @@ function cardEl(c, { qty = 1, isNew = false, big = false } = {}) {
 function renderAction(st) {
   const a = $("action");
   a.replaceChildren();
-  const line = el("div");
-  line.append(el("span", "aturn", st.turn ? `T${st.turn}` : "Pre-game"), el("span", "atext", st.text));
-  a.append(line);
+  const head = el("div", "ahead");
+  const who = st.active === S.me ? "of-me" : "of-opp";
+  head.append(el("span", `aturn ${st.turn ? who : ""}`, st.turn ? `Turn ${st.turn} · ${st.active}` : "Pre-game"));
+  const ph = S.phases[S.idx];
+  if (ph >= 0) head.append(phaseTrack(ph, who));
+  a.append(head, el("div", "atext", st.text));
   if (st.notes.length) {
     const ul = el("ul");
     for (const n of st.notes) ul.append(el("li", n.includes("⚠") ? "warn" : "", n));
     a.append(ul);
   }
+}
+
+/** Every phase of the turn, the current one lit up in the active player's colour. */
+function phaseTrack(current, who) {
+  const track = el("div", "phases");
+  track.title = "Phase of the turn, inferred from the game log (MTGO doesn't record it)";
+  let combat = null;
+  PHASES.forEach((p, i) => {
+    const chip = el("span", `ph ${i === current ? `on ${who}` : i < current ? "done" : ""}`, p.label);
+    if (p.title) chip.title = p.title;
+    if (p.combat) {
+      if (!combat) { combat = el("span", "pgroup"); combat.append(el("span", "pglabel", "Combat")); track.append(combat); }
+      combat.append(chip);
+    } else {
+      combat = null;
+      track.append(chip);
+    }
+  });
+  return track;
 }
 
 function renderStack(stack) {
