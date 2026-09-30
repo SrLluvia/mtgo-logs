@@ -87,6 +87,14 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(len(tags["notes"][0]["text"]), 1000)
         self.assertEqual(self.post_notes({"notes": "not a list"}), 200)
 
+    def test_my_deck_is_stored(self):
+        self.assertEqual(self.post_notes({"my_deck": "Deck 2.0"}), 200)
+        _, _, body = self.request("GET", "/api/matches")
+        self.assertEqual(json.loads(body)[0]["tags"]["my_deck"], "Deck 2.0")
+        status, _, body = self.request("GET", "/api/decks")
+        self.assertEqual(status, 200)
+        self.assertIsInstance(json.loads(body), list)
+
     def test_body_limits(self):
         h = {"Content-Type": "application/json"}
         self.assertEqual(self.request("POST", "/api/cards", "", {**h, "Content-Length": "-1"})[0], 400)
