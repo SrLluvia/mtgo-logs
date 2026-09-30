@@ -456,9 +456,11 @@ function renderStack(stack) {
   if (!stack.length) return;
   s.append(el("div", "slabel", "Stack"));
   for (const it of [...stack].reverse()) {           // top of the stack first
-    const box = el("div", `stack-item ${it.kind}`);
-    const c = { name: it.kind === "ability" ? `${it.source} (ability)` : it.source, card: it.source,
+    const box = el("div", `stack-item ${it.kind}${it.triggered ? " triggered" : ""}`);
+    const what = it.triggered ? "trigger" : "ability";
+    const c = { name: it.kind === "ability" ? `${it.source} (${what})` : it.source, card: it.source,
       note: [it.text, it.targets.length ? `→ ${it.targets.join(", ")}` : ""].filter(Boolean).join("\n") };
+    if (it.kind === "ability") box.append(el("div", "stag", it.triggered ? "⚡ Trigger" : "Ability"));
     box.append(cardEl(c, {}), el("div", "sby", it.targets.length ? `→ ${it.targets.join(", ")}` : it.controller));
     s.append(box);
   }

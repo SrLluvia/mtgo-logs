@@ -117,7 +117,7 @@ class GameEngine(IdentityMixin, HandInferenceMixin, StackMixin, EffectsMixin, Co
                             "library_approx": p.library_approx, "counters": dict(p.counters)}
                         for n, p in self.players.items()},
             "objects": objects,
-            "stack": [{"kind": it.kind, "controller": it.controller, "source": it.source,
+            "stack": [{"kind": it.kind, "triggered": it.triggered, "controller": it.controller, "source": it.source,
                        "text": it.text if it.kind == "ability" else "",
                        "obj": it.obj_uid,
                        "targets": [self.objs[v].name if k == "obj" and v in self.objs else v for k, v in it.targets]}
@@ -354,7 +354,8 @@ class GameEngine(IdentityMixin, HandInferenceMixin, StackMixin, EffectsMixin, Co
         else:
             name, src_uid, tgt_refs = src, None, ev.cards
             ref = None
-        it = StackItem("ability", ev.actor, name, self.full_text(name, text), source_uid=src_uid, source_iid=ref.iid if ref else None)
+        it = StackItem("ability", ev.actor, name, self.full_text(name, text), source_uid=src_uid, source_iid=ref.iid if ref else None,
+                       triggered=True)
         if src_uid is not None:
             it.source_inc = self.objs[src_uid].inc
         it.targets = self.targets_of(ev, tgt_refs, text)

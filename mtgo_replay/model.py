@@ -55,6 +55,7 @@ class StackItem:
     how: set = field(default_factory=set)
     x: int | None = None
     resolving: bool = False
+    triggered: bool = False       # an ability that went on the stack by itself (vs. one the player activated)
     affected: set = field(default_factory=set)
     failed_search: bool = False
     energy_paid: int = 0
