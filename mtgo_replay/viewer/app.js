@@ -149,17 +149,6 @@ function renderInfo() {
   };
   item("On the play:", h.on_play || "?");
   item("Winner:", h.winner || "?");
-  // my deck: what the user set, else what was detected (exact list / closest / guessed)
-  const detected = h.deck ? h.deck.name : Object.values(h.decks || {})[0]?.split(" (")[0];
-  const chosen = matchTags(S.match).my_deck;
-  if (chosen || detected) {
-    const how = chosen ? "set by you" : { exact: "exact", closest: "closest", guessed: "guessed" }[h.deck?.how] || "";
-    const s = el("span", "", `${h.me || S.me}'s deck: `);
-    s.append(el("b", "", chosen || detected), how ? ` (${how})` : "");
-    s.title = chosen ? `Detected: ${detected || "?"}\n${h.deck?.detail || ""}` : (h.deck?.detail || "");
-    info.append(s);
-  }
-  $("myDeck").placeholder = detected ? `${detected} (detected)` : "Your deck";
   const src = el("span", "", h.source.startsWith("game log +") ? "✔ exact MTGO snapshots" : "Reconstructed from the game log");
   src.title = h.source;
   info.append(src);
