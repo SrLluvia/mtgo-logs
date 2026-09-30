@@ -1,11 +1,11 @@
 :root {
-  --bg: #0f1411;
-  --felt: #16211b;
-  --felt-2: #1b2a22;
-  --panel: #151a17;
-  --line: #2a3a31;
-  --text: #e6ece8;
-  --muted: #93a39a;
+  --bg: #15161b;
+  --felt: #1a1b21;
+  --felt-2: #22232a;
+  --panel: #1a1b20;
+  --line: #34353d;
+  --text: #ececf0;
+  --muted: #a4a5b0;
   --accent: #d9b35b;
   --me: #4f9dde;
   --opp: #d46a5f;
@@ -21,18 +21,18 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-size: 14px; }
 body { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; overflow: hidden; }
-button { font: inherit; color: var(--text); background: #223029; border: 1px solid var(--line);
+button { font: inherit; color: var(--text); background: #272830; border: 1px solid var(--line);
   border-radius: 6px; padding: 5px 10px; cursor: pointer; }
-button:hover { background: #2c3d34; }
+button:hover { background: #32333c; }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-code { background: #223029; padding: 1px 5px; border-radius: 4px; }
+code { background: #272830; padding: 1px 5px; border-radius: 4px; }
 
 /* ---------- top bar ---------- */
 .topbar { display: flex; align-items: center; gap: 16px; padding: 8px 14px; background: var(--panel);
   border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .brand { font-weight: 700; letter-spacing: .5px; color: var(--accent); }
 .field { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-select { font: inherit; color: var(--text); background: #1d2621; border: 1px solid var(--line);
+select { font: inherit; color: var(--text); background: #20212a; border: 1px solid var(--line);
   border-radius: 6px; padding: 5px 8px; max-width: 360px; }
 .tabs { display: flex; gap: 6px; }
 .tabs button.active { border-color: var(--accent); color: var(--accent); }
@@ -63,7 +63,7 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
 #pTop .row.creatures { grid-row: 3; align-content: flex-end; }
 
 /* each zone has its own card size (height recomputed from the width in the same scope) */
-.row.lands { --cw: calc(var(--cwb) * .56); --ch: calc(var(--cw) * 1.395); }
+.row.lands { --cw: calc(var(--cwb) * .68); --ch: calc(var(--cw) * 1.395); }
 .piles { --cw: calc(var(--cwb) * .62); --ch: calc(var(--cw) * 1.395); }
 .hand { --cw: calc(var(--cwb) * .72); --ch: calc(var(--cw) * 1.395); }
 .stack { --cw: calc(var(--cwb) * .55); --ch: calc(var(--cw) * 1.395); }
@@ -79,7 +79,7 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
 .stat.life b { font-size: 20px; color: #fff; }
 .stat.approx b { color: var(--warn); }
 .badge-exact { font-size: 11px; color: var(--good); border: 1px solid #2f5a3d; border-radius: 4px; padding: 0 5px; }
-.pcounter { font-size: 12px; background: #243129; border-radius: 4px; padding: 1px 6px; }
+.pcounter { font-size: 12px; background: #2a2b33; border-radius: 4px; padding: 1px 6px; }
 
 .row { display: flex; flex-wrap: wrap; gap: 6px; min-height: calc(var(--ch) * .6); align-items: flex-start; }
 .row.lands { min-height: 0; }
@@ -89,7 +89,7 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
 
 /* ---------- cards ---------- */
 .card { position: relative; width: var(--cw); height: var(--ch); border-radius: 5px; flex: none;
-  background: #26332c; border: 1px solid #3a4a41; overflow: visible; cursor: default;
+  background: #2b2c34; border: 1px solid #4a4b55; overflow: visible; cursor: default;
   transition: transform .12s, box-shadow .12s; }
 .card .face { position: absolute; inset: 0; border-radius: 4px; transition: transform .15s; }
 .card img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; display: block; }
@@ -98,20 +98,20 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
 /* tapped: the card takes a landscape slot and its face turns 90° like in MTGO */
 .card.tapped { width: var(--ch); height: var(--cw); margin-top: calc(var(--ch) - var(--cw)); background: transparent; border-color: transparent; }
 .card.tapped .face { inset: auto; width: var(--cw); height: var(--ch); left: 50%; top: 50%;
-  transform: translate(-50%, -50%) rotate(90deg); border: 1px solid #3a4a41; background: #26332c; }
+  transform: translate(-50%, -50%) rotate(90deg); border: 1px solid #4a4b55; background: #2b2c34; }
 .card.tap-guess .face { outline: 2px dashed var(--warn); outline-offset: 1px; }
 .card .b.tapq { left: -4px; top: -4px; color: var(--warn); }
 .pile .card.tapped, .stack-item .card.tapped { width: var(--cw); height: var(--ch); margin: 0; }
 .card .tile .tname { font-weight: 600; }
 .card .tile .ttype { color: var(--muted); font-size: 9.5px; }
-.card.unknown { background: repeating-linear-gradient(45deg, #26332c, #26332c 6px, #2c3a32 6px, #2c3a32 12px); }
+.card.unknown { background: repeating-linear-gradient(45deg, #2b2c34, #2b2c34 6px, #32333b 6px, #32333b 12px); }
 .card.token { border-style: dashed; }
 .card:hover { transform: translateY(-3px); z-index: 5; }
 .card.new .face { box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(217,179,91,.7); }
 .card.attacking .face { box-shadow: 0 0 0 2px var(--opp), 0 0 12px rgba(212,106,95,.8); }
 .card.uncertain { outline: 2px dashed var(--warn); outline-offset: 1px; }
 .card .b { position: absolute; font-size: 10.5px; font-weight: 700; border-radius: 4px; padding: 0 4px;
-  background: rgba(10,14,12,.88); border: 1px solid #4a5a51; white-space: nowrap; }
+  background: rgba(16,17,21,.94); border: 1px solid #5a5b66; white-space: nowrap; }
 .card .b.pt { right: -4px; bottom: -4px; }
 .card .b.cnt { left: -4px; top: -4px; color: var(--accent); }
 .card .b.warn { right: -4px; top: -4px; color: var(--warn); }
@@ -158,13 +158,13 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
 .log-head span { color: var(--muted); font-weight: 400; font-size: 12px; }
 .log ol { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; }
 .log li { padding: 4px 12px; cursor: pointer; font-size: 12.5px; border-left: 3px solid transparent; line-height: 1.35; }
-.log li:hover { background: #1c2520; }
+.log li:hover { background: #24252d; }
 .log li.turn { margin-top: 6px; padding: 5px 12px; font-weight: 700; font-size: 12px; color: var(--accent);
-  background: #19211c; text-transform: uppercase; letter-spacing: .5px; }
+  background: #1f2027; text-transform: uppercase; letter-spacing: .5px; }
 .log li.turn.of-me { color: var(--me); }
 .log li.turn.of-opp { color: var(--opp); }
-.log li.current { background: #283a2f; border-left-color: var(--accent); }
-.log li .n { color: #5d6d64; font-size: 10.5px; margin-right: 6px; font-variant-numeric: tabular-nums; }
+.log li.current { background: #221f16; border-left-color: var(--accent); }
+.log li .n { color: #787985; font-size: 10.5px; margin-right: 6px; font-variant-numeric: tabular-nums; }
 .log li .w { color: var(--warn); margin-left: 4px; }
 .log li.by-me { color: #cfe3f5; }
 .log li.by-opp { color: #f1d6d2; }
@@ -177,14 +177,14 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
 #slider { width: 100%; accent-color: var(--accent); margin: 0; }
 .ticks { position: absolute; left: 0; right: 0; top: 20px; height: 14px; pointer-events: none; }
 .tick { position: absolute; top: 0; font-size: 9.5px; color: var(--muted); transform: translateX(-1px);
-  border-left: 1px solid #4a5a51; padding-left: 2px; height: 12px; line-height: 12px; }
+  border-left: 1px solid #5a5b66; padding-left: 2px; height: 12px; line-height: 12px; }
 .tick.of-me { border-color: var(--me); }
 .tick.of-opp { border-color: var(--opp); }
 .position { color: var(--muted); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .position b { color: var(--text); }
 
 /* ---------- hover preview & modal ---------- */
-.preview { position: fixed; z-index: 50; width: 300px; background: #111713; border: 1px solid var(--line);
+.preview { position: fixed; z-index: 50; width: 300px; background: #15161b; border: 1px solid var(--line);
   border-radius: 10px; padding: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.6); pointer-events: none; }
 .preview img { width: 100%; border-radius: 8px; display: block; }
 .preview .pv-name { font-weight: 700; }
@@ -209,15 +209,15 @@ select { font: inherit; color: var(--text); background: #1d2621; border: 1px sol
 }
 
 /* ---------- tags & review notes ---------- */
-input#oppDeck, input#noteText { font: inherit; color: var(--text); background: #1d2621; border: 1px solid var(--line);
+input#oppDeck, input#noteText { font: inherit; color: var(--text); background: #20212a; border: 1px solid var(--line);
   border-radius: 6px; padding: 5px 8px; }
 .notes { display: flex; flex-direction: column; max-height: 38%; border-bottom: 1px solid var(--line); }
 .notes ul { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; }
 .note { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; align-items: baseline;
   padding: 4px 10px; font-size: 12.5px; border-left: 3px solid transparent; }
-.note.here { background: #283a2f; border-left-color: var(--accent); }
+.note.here { background: #221f16; border-left-color: var(--accent); }
 .note.done .ntext { color: var(--muted); text-decoration: line-through; }
-.note .npos { padding: 0 6px; font-size: 11px; color: var(--accent); background: #1d2621; white-space: nowrap; }
+.note .npos { padding: 0 6px; font-size: 11px; color: var(--accent); background: #20212a; white-space: nowrap; }
 .note .ntext { cursor: pointer; overflow-wrap: anywhere; }
 .note .ndel { padding: 0 5px; font-size: 11px; background: transparent; border-color: transparent; color: var(--muted); }
 .note .ndel:hover { color: var(--opp); }
@@ -237,7 +237,7 @@ input#oppDeck, input#noteText { font: inherit; color: var(--text); background: #
 .hand .row .hand-note { margin-left: 10px; }
 
 /* the hand: a labelled box on the right of the back row */
-.hand { position: relative; border: 1px dashed #3d5046; border-radius: 8px; padding: 16px 10px 8px;
+.hand { position: relative; border: 1px dashed #484954; border-radius: 8px; padding: 16px 10px 8px;
   background: rgba(0,0,0,.15); max-width: 100%; }
 .hand-label { position: absolute; top: 2px; left: 8px; font-size: 10.5px; text-transform: uppercase;
   letter-spacing: .8px; color: var(--muted); }

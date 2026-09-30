@@ -78,13 +78,6 @@ function setupNotes() {
       if (first) loadMatch(first.dir, 1, 0);
     }
   });
-  $("myDeck").addEventListener("change", () => {
-    matchTags(S.match).my_deck = $("myDeck").value.trim();
-    saveTags().then(renderInfo);
-  });
-  fetch("/api/decks").then((r) => (r.ok ? r.json() : [])).then((names) => {
-    $("myDeckList").replaceChildren(...names.map((n) => { const o = el("option"); o.value = n; return o; }));
-  }).catch(() => {});
   $("oppDeck").addEventListener("change", () => {
     matchTags(S.match).opp_deck = $("oppDeck").value.trim();
     saveTags();
@@ -105,7 +98,6 @@ function setupNotes() {
 /** Called when a match is shown. */
 function showMatchTags() {
   $("oppDeck").value = matchTags(S.match).opp_deck;
-  $("myDeck").value = matchTags(S.match).my_deck || "";
 }
 
 function jumpToNote(n) {
